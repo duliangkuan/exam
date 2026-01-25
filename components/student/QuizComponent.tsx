@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { renderMath } from '@/lib/math-render';
 
 interface Question {
   id: number;
@@ -127,7 +128,9 @@ export default function QuizComponent({ questions, subject }: QuizComponentProps
         </div>
 
         <div className="glass-effect rounded-2xl p-8 mb-6">
-          <h3 className="text-xl font-bold text-white mb-6">{currentQuestion.question}</h3>
+          <h3 className="text-xl font-bold text-white mb-6">
+            {renderMath(currentQuestion.question)}
+          </h3>
           
           <div className="space-y-4">
             {(['A', 'B', 'C', 'D'] as const).map((option) => (
@@ -141,7 +144,7 @@ export default function QuizComponent({ questions, subject }: QuizComponentProps
                 }`}
               >
                 <span className="font-bold text-blue-400 mr-2">{option}.</span>
-                {currentQuestion.options[option]}
+                {renderMath(currentQuestion.options[option])}
               </button>
             ))}
           </div>

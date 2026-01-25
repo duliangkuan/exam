@@ -1,5 +1,7 @@
 'use client';
 
+import { renderMath } from '@/lib/math-render';
+
 interface ReportViewProps {
   report: any;
 }
@@ -31,7 +33,7 @@ export default function ReportView({ report }: ReportViewProps) {
             >
               <div className="flex items-start justify-between mb-4">
                 <h3 className="text-lg font-bold text-white flex-1">
-                  第 {index + 1} 题: {question.question}
+                  第 {index + 1} 题: {renderMath(question.question)}
                 </h3>
                 <span
                   className={`px-3 py-1 rounded-lg text-sm font-bold ${
@@ -75,7 +77,7 @@ export default function ReportView({ report }: ReportViewProps) {
 
               <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
                 <p className="text-sm font-bold text-blue-400 mb-2">解析：</p>
-                <p className="text-gray-300">{question.explanation}</p>
+                <p className="text-gray-300">{renderMath(question.explanation)}</p>
               </div>
             </div>
           );
