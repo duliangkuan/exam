@@ -1,0 +1,79 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 用户系统表
+model Admin {
+  id        String   @id @default(uuid())
+  password  String   // 默认: admin888 (加密存储)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("admins")
+}
+
+model Teacher {
+  id               String   @id @default(uuid())
+  username         String   @unique
+  password         String   // 加密存储
+  createdByAdminId String   @map("created_by_admin_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  isActive         Boolean  @default(true) @map("is_active")
+
+  students    Student[]
+  assignments Assignment[]
+
+  @@map("teachers")
+}
+
+model Student {
+  id                String   @id @default(uuid())
+  username          String   @unique
+  password          String   // 加密存储
+  createdByTeacherId String  @map("created_by_teacher_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  isActive          Boolean  @default(true) @map("is_active")
+  deletedAt         DateTime? @map("deleted_at")
+
+  teacher           Teacher  @relation(fields: [createdByTeacherId], references: [id])
+  assignments       Assignment[]
+  examReports       ExamReport[]
+
+  @@map("students")
+}
+
+model Assignment {
+  id        String   @id @default(uuid())
+  teacherId String   @map("teacher_id")
+  studentId String   @map("student_id")
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  teacher   Teacher  @relation(fields: [teacherId], references: [id])
+  student   Student  @relation(fields: [studentId], references: [id])
+
+  @@map("assignments")
+}
+
+// 学习系统表（与用户系统隔离）
+model ExamReport {
+  id          String   @id @default(uuid())
+  studentId   String   @map("student_id") // 仅逻辑关联，不强制外键约束
+  subject     String   // 大学语文/大学英语/高等数学/计算机基础
+  selectedPath String  @map("selected_path") // 存储选择路径（JSON字符串）
+  questions   String   // 存储题目数据（JSON字符串）
+  answers     String   // 存储学生答案（JSON字符串）
+  score       Int      // 总分 0-100
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  student     Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@map("exam_reports")
+}
