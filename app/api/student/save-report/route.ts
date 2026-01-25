@@ -15,9 +15,9 @@ export async function POST(request: NextRequest) {
       data: {
         studentId: user.id,
         subject,
-        selectedPath: JSON.stringify(selectedPath),
-        questions: JSON.stringify(questions),
-        answers: JSON.stringify(answers),
+        selectedPath,
+        questions,
+        answers,
         score,
       },
     });

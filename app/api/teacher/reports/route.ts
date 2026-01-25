@@ -30,13 +30,8 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    // 解析JSON字符串
-    const reportsWithParsedData = reports.map(report => ({
-      ...report,
-      selectedPath: JSON.parse(report.selectedPath),
-    }));
-
-    return NextResponse.json({ reports: reportsWithParsedData });
+    // PostgreSQL的Json类型已经是对象，无需解析
+    return NextResponse.json({ reports });
   } catch (error) {
     console.error('Get reports error:', error);
     return NextResponse.json({ error: '获取报告失败' }, { status: 500 });

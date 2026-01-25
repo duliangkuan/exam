@@ -23,13 +23,8 @@ export default async function ReportPage({
     redirect('/student/dashboard');
   }
 
-  // 解析JSON字符串
-  const reportData = {
-    ...report,
-    selectedPath: JSON.parse(report.selectedPath),
-    questions: JSON.parse(report.questions),
-    answers: JSON.parse(report.answers),
-  };
+  // PostgreSQL的Json类型已经是对象，无需解析
+  const reportData = report;
 
   return (
     <div className="min-h-screen p-8">

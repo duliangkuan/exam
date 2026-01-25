@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -67,9 +67,9 @@ model ExamReport {
   id          String   @id @default(uuid())
   studentId   String   @map("student_id") // 仅逻辑关联，不强制外键约束
   subject     String   // 大学语文/大学英语/高等数学/计算机基础
-  selectedPath String  @map("selected_path") // 存储选择路径（JSON字符串）
-  questions   String   // 存储题目数据（JSON字符串）
-  answers     String   // 存储学生答案（JSON字符串）
+  selectedPath Json    @map("selected_path") // 存储选择路径
+  questions   Json     // 存储题目数据
+  answers     Json     // 存储学生答案
   score       Int      // 总分 0-100
   createdAt   DateTime @default(now()) @map("created_at")
 

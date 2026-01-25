@@ -52,7 +52,7 @@ export default async function NotebookPage() {
                     </div>
                   </div>
                   <p className="text-sm text-gray-300">
-                    知识点: {report.selectedPath}
+                    知识点: {typeof report.selectedPath === 'string' ? report.selectedPath : JSON.stringify(report.selectedPath)}
                   </p>
                 </Link>
               ))}
