@@ -1,12 +1,4 @@
-# Vercel 部署完整指南
-
-## ✅ 已完成的准备工作
-
-1. ✅ 数据库配置已改为PostgreSQL（适配Vercel）
-2. ✅ Json字段已恢复为PostgreSQL的Json类型
-3. ✅ 代码已更新以适配PostgreSQL
-4. ✅ Vercel CLI已安装
-5. ✅ vercel.json配置文件已更新
+# Vercel 部署指南
 
 ## 📋 部署步骤
 

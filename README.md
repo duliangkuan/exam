@@ -11,9 +11,8 @@
 
 ### 学习系统
 - **AI通关测**: 四个学科（大学语文、大学英语、高等数学、计算机基础）的智能测评
-- **AI错题本**: 查看历史测评报告
+- **AI错题本**: 错题管理与智能分析
 - **学习计划**: 接收教师布置的作业
-- **AI精准练**: 暂未上线
 
 ## 技术栈
 
@@ -23,18 +22,14 @@
 - Prisma (PostgreSQL)
 - Deepseek API
 
-## 安装步骤
+## 快速开始
 
 1. 安装依赖：
 ```bash
 npm install
 ```
 
-2. 配置环境变量：
-```bash
-cp .env.example .env
-# 编辑 .env 文件，填入数据库连接等信息
-```
+2. 配置环境变量（复制 `.env.example` 为 `.env.local`，填入配置）
 
 3. 初始化数据库：
 ```bash
@@ -47,27 +42,20 @@ npx prisma db push
 npm run dev
 ```
 
-## 部署到Vercel
+## 部署到 Vercel
 
-1. 将代码推送到GitHub仓库
+详见 [VERCEL_SETUP.md](./VERCEL_SETUP.md)。或使用部署脚本：
 
-2. 在Vercel中导入项目
+```powershell
+.\deploy-vercel.ps1
+```
 
-3. 配置环境变量：
-   - `DATABASE_URL`: Vercel Postgres连接字符串
-   - `JWT_SECRET`: 随机生成的密钥
-   - `DEEPSEEK_API_KEY`: Deepseek API密钥
-
-4. 部署完成后，运行数据库迁移：
-   - 在Vercel项目设置中，找到数据库，运行 `npx prisma db push`
-
-## 默认管理员密码
+## 默认账号
 
 - 管理员密码: `admin888`
 
 ## 注意事项
 
-- 教师账号由管理员创建，永久有效
-- 学生账号由教师创建，可被注销（数据永久删除）
-- 所有密码使用bcrypt加密存储
-- Deepseek API调用需要网络连接
+- 教师账号由管理员创建
+- 学生账号由教师创建，可被注销
+- 所有密码使用 bcrypt 加密存储

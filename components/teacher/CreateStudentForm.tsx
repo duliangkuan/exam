@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 export default function CreateStudentForm() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [examYear, setExamYear] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,7 +23,7 @@ export default function CreateStudentForm() {
       const response = await fetch('/api/teacher/create-student', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, nickname: nickname || undefined, examYear: examYear || undefined }),
       });
 
       const data = await response.json();
@@ -30,6 +32,8 @@ export default function CreateStudentForm() {
         setSuccess('学生账号创建成功！');
         setUsername('');
         setPassword('');
+        setNickname('');
+        setExamYear('');
         setTimeout(() => {
           router.refresh();
         }, 1500);
@@ -65,6 +69,26 @@ export default function CreateStudentForm() {
           className="w-full px-4 py-2 bg-gray-800 border border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="请输入密码"
           required
+        />
+      </div>
+      <div className="mb-4">
+        <label className="block text-sm font-medium mb-2">学生昵称（选填，用于首页展示）</label>
+        <input
+          type="text"
+          value={nickname}
+          onChange={(e) => setNickname(e.target.value)}
+          className="w-full px-4 py-2 bg-gray-800 border border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="如：小明"
+        />
+      </div>
+      <div className="mb-4">
+        <label className="block text-sm font-medium mb-2">年级/考生年份（选填）</label>
+        <input
+          type="text"
+          value={examYear}
+          onChange={(e) => setExamYear(e.target.value)}
+          className="w-full px-4 py-2 bg-gray-800 border border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="如：27年"
         />
       </div>
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}

@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '未授权' }, { status: 401 });
     }
 
-    const { username, password } = await request.json();
+    const { username, password, nickname, examYear } = await request.json();
 
     if (!username || !password) {
       return NextResponse.json({ error: '请输入用户名和密码' }, { status: 400 });
@@ -31,6 +31,8 @@ export async function POST(request: NextRequest) {
       data: {
         username,
         password: hashedPassword,
+        nickname: nickname ?? null,
+        examYear: examYear ?? null,
         createdByTeacherId: user.id,
       },
     });

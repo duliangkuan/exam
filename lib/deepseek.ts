@@ -20,41 +20,42 @@ export interface QuestionsResponse {
 
 export async function generateQuestions(
   subject: string,
-  selectedPath: Record<string, any>
+  sectionPayload: { 节: string; 知识点: string[] }
 ): Promise<Question[]> {
-  const prompt = `你是一位专业的专升本考试出题专家。现在需要你为${subject}科目出题。
+  const { 节: sectionName, 知识点: knowledgePoints } = sectionPayload;
+  const prompt = `你是专升本考试出题专家。为「${subject}」出题。
 
-知识点信息：
-${JSON.stringify(selectedPath, null, 2)}
+范围：节「${sectionName}」。知识点列表：
+${JSON.stringify(knowledgePoints, null, 2)}
 
-请严格按照以下要求出题：
-1. 出10道单选题
-2. 每道题必须包含：
-   - 题目内容
-   - A、B、C、D四个选项
-   - 正确答案（A/B/C/D中的一个）
-   - 详细解析
+【数学公式书写规范（必须遵守）】
+题目、选项、解析中出现的所有数学表达式都必须用行内 LaTeX 包裹：$...$
+- 下标：写成 $a_n$、$a_1$、$a_{n+1}$，不要写裸露的 a_n、a_1。
+- 极限：写成 $\\\\lim_{n\\\\to\\\\infty}$ 或 $\\\\lim_{n\\\\rightarrow\\\\infty}$，不要写 lim_{n→∞}。
+- 根号：写成 $\\\\sqrt{2+a_n}$、$\\\\sqrt{x}$，让被开方内容在根号内。
+- 分数：写成 $\\\\frac{1}{2}$、$\\\\frac{a}{b}$。
+- 其它：指数 $x^2$、求和 $\\\\sum$、积分 $\\\\int$ 等一律用 $...$ 包裹。
+这样前端才能正确渲染，学生才能看懂。凡有数学符号的地方都必须用 $...$ 包住。
 
-3. 题目难度适中，符合专升本考试水平
-4. 题目必须与所选知识点紧密相关
+硬性要求：
+1. 必须恰好出10道单选题，不多不少。
+2. 题目、选项、解析中的文字不要包含未转义的换行或引号；数学部分严格按上面规范用 $...$ 书写，避免破坏 JSON（反斜杠写 \\\\）。
+3. 只返回一个JSON对象，不要任何说明、不要markdown代码块，直接以 { 开头、以 } 结尾。
 
-请以以下JSON格式返回，只返回JSON，不要其他内容：
+每题结构（严格按此字段名）：
 {
   "questions": [
     {
       "id": 1,
-      "question": "题目内容",
-      "options": {
-        "A": "选项A",
-        "B": "选项B",
-        "C": "选项C",
-        "D": "选项D"
-      },
+      "question": "题目内容（数学用 $...$ 包裹，如：设数列{$a_n$}满足$a_1=1$，$a_{n+1}=\\\\sqrt{2+a_n}$，则$\\\\lim_{n\\\\to\\\\infty}a_n=$()",
+      "options": { "A": "选项A（含公式时用$...$）", "B": "选项B", "C": "选项C", "D": "选项D" },
       "correctAnswer": "A",
-      "explanation": "详细解析内容"
+      "explanation": "解析内容（公式同样用$...$）"
     }
   ]
-}`;
+}
+
+请直接输出上述格式的JSON，共10道题。`;
 
   try {
     const response = await fetch(DEEPSEEK_API_URL, {
@@ -71,8 +72,8 @@ ${JSON.stringify(selectedPath, null, 2)}
             content: prompt,
           },
         ],
-        temperature: 0.7,
-        max_tokens: 8000, // 增加到8000以支持数学题目的复杂内容
+        temperature: 0.5,
+        max_tokens: 5000,
       }),
     });
 
@@ -90,50 +91,83 @@ ${JSON.stringify(selectedPath, null, 2)}
       throw new Error('No content in API response');
     }
 
-    // 尝试提取JSON
     let jsonContent = content.trim();
-    
-    // 如果返回的内容包含markdown代码块，提取JSON部分
     if (jsonContent.includes('```')) {
       const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        jsonContent = jsonMatch[1];
+      if (jsonMatch) jsonContent = jsonMatch[1].trim();
+    }
+
+    function tryParse(raw: string): QuestionsResponse | null {
+      try {
+        return JSON.parse(raw) as QuestionsResponse;
+      } catch {
+        return null;
       }
     }
 
-    // 记录原始内容以便调试
-    console.log('Subject:', subject);
-    console.log('JSON Content length:', jsonContent.length);
-    console.log('JSON Content preview:', jsonContent.substring(0, 200));
-
-    let parsed: QuestionsResponse;
-    try {
-      parsed = JSON.parse(jsonContent) as QuestionsResponse;
-    } catch (parseError) {
-      console.error('JSON parse error:', parseError);
-      console.error('Failed to parse content:', jsonContent);
+    let parsed: QuestionsResponse | null = tryParse(jsonContent);
+    if (!parsed) {
+      jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1');
+      parsed = tryParse(jsonContent);
+    }
+    if (!parsed) {
+      const firstBrace = jsonContent.indexOf('{');
+      if (firstBrace >= 0) {
+        let depth = 0;
+        let end = -1;
+        for (let i = firstBrace; i < jsonContent.length; i++) {
+          const c = jsonContent[i];
+          if (c === '"' && jsonContent[i - 1] !== '\\') {
+            const close = jsonContent.indexOf('"', i + 1);
+            if (close === -1) break;
+            i = close;
+            continue;
+          }
+          if (c === '{') depth++;
+          if (c === '}') {
+            depth--;
+            if (depth === 0) {
+              end = i;
+              break;
+            }
+          }
+        }
+        if (end > firstBrace) {
+          parsed = tryParse(jsonContent.slice(firstBrace, end + 1));
+        }
+      }
+    }
+    if (!parsed) {
+      console.error('Raw content preview:', content.substring(0, 500));
       throw new Error('JSON解析失败，返回内容格式不正确');
     }
-    
-    // 验证题目格式
+
     if (!parsed.questions || !Array.isArray(parsed.questions)) {
-      console.error('Invalid questions format:', parsed);
       throw new Error('题目格式不正确');
     }
 
-    // 验证题目数量（允许至少5道题，但记录警告）
-    const questionCount = parsed.questions.length;
-    if (questionCount < 5) {
-      console.error(`Too few questions generated: ${questionCount}`);
-      throw new Error(`生成的题目数量不足（${questionCount}道），请重试`);
+    let list = parsed.questions;
+    if (list.length < 10) {
+      throw new Error(`生成的题目数量不足（${list.length}道），请重试`);
     }
-    
-    if (questionCount < 10) {
-      console.warn(`Only ${questionCount} questions generated, expected 10`);
+    if (list.length > 10) {
+      list = list.slice(0, 10);
     }
 
-    console.log(`Successfully generated ${questionCount} questions for ${subject}`);
-    return parsed.questions;
+    const normalized = list.map((q, i) => ({
+      id: i + 1,
+      question: String(q?.question ?? '').trim(),
+      options: {
+        A: String(q?.options?.A ?? '').trim(),
+        B: String(q?.options?.B ?? '').trim(),
+        C: String(q?.options?.C ?? '').trim(),
+        D: String(q?.options?.D ?? '').trim(),
+      },
+      correctAnswer: (['A', 'B', 'C', 'D'].includes(String(q?.correctAnswer ?? '')) ? q.correctAnswer : 'A') as 'A' | 'B' | 'C' | 'D',
+      explanation: String(q?.explanation ?? '').trim(),
+    }));
+
+    return normalized;
   } catch (error: any) {
     console.error('Deepseek API error:', error);
     console.error('Error stack:', error.stack);
@@ -141,4 +175,70 @@ ${JSON.stringify(selectedPath, null, 2)}
     const errorMessage = error.message || '生成题目失败，请重试';
     throw new Error(errorMessage);
   }
+}
+
+export interface LearningSuggestions {
+  weakPoints: string;
+  learningMethods: string;
+}
+
+export async function generateLearningSuggestions(summary: {
+  subject: string;
+  score: number;
+  totalQuestions: number;
+  correctCount: number;
+  wrongCount: number;
+  wrongQuestionTexts: string[];
+  selectedPathSummary?: string;
+}): Promise<LearningSuggestions> {
+  const apiKey = process.env.DEEPSEEK_API_KEY || DEEPSEEK_API_KEY;
+  const prompt = `你是一位专业的专升本学习顾问。请根据以下测评报告摘要，生成针对性的学习建议。
+
+【测评摘要】
+- 科目：${summary.subject}
+- 得分：${summary.score} 分（满分 100）
+- 答题总数：${summary.totalQuestions} 道，答对 ${summary.correctCount} 道，答错 ${summary.wrongCount} 道
+${summary.selectedPathSummary ? `- 测评范围：${summary.selectedPathSummary}` : ''}
+${summary.wrongQuestionTexts.length > 0 ? `- 错题题干摘要（供分析薄弱点）：\n${summary.wrongQuestionTexts.slice(0, 15).map((t, i) => `${i + 1}. ${t.slice(0, 120)}${t.length > 120 ? '…' : ''}`).join('\n')}` : ''}
+
+请以 JSON 格式返回，且只返回 JSON，不要其他内容。格式如下：
+{
+  "weakPoints": "针对本次测评分析的薄弱知识点说明，分条或分段写，2～5 条即可",
+  "learningMethods": "针对上述薄弱点的学习方法与复习建议，分条或分段写，2～5 条即可，具体可操作"
+}`;
+
+  const response = await fetch(DEEPSEEK_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.6,
+      max_tokens: 1500,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    console.error('Learning suggestions API failed:', response.status, errText);
+    throw new Error('生成学习建议失败，请稍后重试');
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content?.trim();
+  if (!content) throw new Error('未获取到学习建议内容');
+
+  let jsonStr = content;
+  if (jsonStr.includes('```')) {
+    const m = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (m) jsonStr = m[1];
+  }
+  const parsed = JSON.parse(jsonStr) as LearningSuggestions;
+  if (typeof parsed.weakPoints !== 'string' || typeof parsed.learningMethods !== 'string') {
+    throw new Error('学习建议格式不正确');
+  }
+  return parsed;
 }

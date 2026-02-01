@@ -29,7 +29,12 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error('Student login error:', error);
-    return NextResponse.json({ error: '登录失败' }, { status: 500 });
+    const err = error as Error;
+    console.error('Student login error:', err);
+    const message =
+      process.env.NODE_ENV === 'development'
+        ? err?.message || '登录失败'
+        : '登录失败';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

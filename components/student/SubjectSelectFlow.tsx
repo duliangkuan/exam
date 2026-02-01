@@ -33,15 +33,16 @@ export default function SubjectSelectFlow({ subject }: SubjectSelectFlowProps) {
     }
   };
 
+  // 出题最小范围为「节」，不再选到知识点
   const getSteps = () => {
     switch (subject) {
       case 'chinese':
-        return ['板块', '章', '节', '知识点'];
+        return ['板块', '章', '节'];
       case 'english':
-        return ['板块', '部分', '章', '节', '知识点'];
+        return ['板块', '部分', '章', '节'];
       case 'math':
       case 'computer':
-        return ['章', '节', '知识点'];
+        return ['章', '节'];
       default:
         return [];
     }
@@ -78,31 +79,10 @@ export default function SubjectSelectFlow({ subject }: SubjectSelectFlowProps) {
       }
     });
 
-    // 获取当前步骤的唯一选项
+    // 获取当前步骤的唯一选项（仅到「节」，不再有知识点步骤）
     const currentStepName = steps[step];
-    
-    // 特殊处理"知识点"步骤：知识点字段是数组，需要展开
-    if (currentStepName === '知识点') {
-      // 收集所有知识点数组并展开
-      const allKnowledgePoints: string[] = [];
-      filtered.forEach((item: any) => {
-        const knowledgePoints = item[currentStepName];
-        if (Array.isArray(knowledgePoints)) {
-          allKnowledgePoints.push(...knowledgePoints);
-        } else if (knowledgePoints) {
-          // 如果不是数组，直接添加（兼容处理）
-          allKnowledgePoints.push(knowledgePoints);
-        }
-      });
-      
-      // 去重并创建选项
-      const unique = [...new Set(allKnowledgePoints)];
-      setOptions(unique.map((val: string) => ({ label: val, value: val })));
-    } else {
-      // 其他步骤：正常处理字符串值
-      const unique = [...new Set(filtered.map((item: any) => item[currentStepName]))];
-      setOptions(unique.map((val: any) => ({ label: val, value: val })));
-    }
+    const unique = [...new Set(filtered.map((item: any) => item[currentStepName]))];
+    setOptions(unique.map((val: any) => ({ label: val, value: val })));
   };
 
   const handleSelect = (value: string) => {

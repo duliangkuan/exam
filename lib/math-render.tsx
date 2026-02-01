@@ -5,7 +5,7 @@ import React from 'react';
 
 /**
  * 将文本中的LaTeX代码转换为可渲染的React组件
- * 支持行内公式 $...$ 和块级公式 $$...$$
+ * 支持：行内 $...$ 与 \(...\)，块级 $$...$$ 与 \[...\]
  * 如果文本中没有LaTeX代码，直接返回原文本
  */
 export function renderMath(text: string): (string | React.ReactElement)[] {
@@ -13,12 +13,11 @@ export function renderMath(text: string): (string | React.ReactElement)[] {
     return [text];
   }
 
-  // 检查是否包含LaTeX公式
-  const hasInlineMath = /\$[^$\n]+\$/.test(text);
-  const hasBlockMath = /\$\$[\s\S]*?\$\$/.test(text);
-  
-  if (!hasInlineMath && !hasBlockMath) {
-    // 没有LaTeX公式，直接返回原文本
+  const hasDollarInline = /\$[^$\n]+\$/.test(text);
+  const hasDollarBlock = /\$\$[\s\S]*?\$\$/.test(text);
+  const hasParenInline = /\\\([\s\S]*?\\\)/.test(text);
+  const hasParenBlock = /\\\[[\s\S]*?\\\]/.test(text);
+  if (!hasDollarInline && !hasDollarBlock && !hasParenInline && !hasParenBlock) {
     return [text];
   }
 
@@ -58,10 +57,37 @@ export function renderMath(text: string): (string | React.ReactElement)[] {
     });
   });
 
-  // 添加行内公式（排除在块级公式内的）
+  // 收集块级公式 \[...\]
+  const blockBracketRegex = /\\\[([\s\S]*?)\\\]/g;
+  while ((match = blockBracketRegex.exec(text)) !== null) {
+    allMatches.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      content: match[1].trim(),
+      isBlock: true,
+    });
+  }
+
+  // 添加行内公式 $...$（排除在块级公式内的）
   while ((match = inlineRegex.exec(text)) !== null) {
-    const isInsideBlock = blockMatches.some(
-      (bm) => match.index >= bm.start && match.index < bm.end
+    const isInsideBlock = allMatches.some(
+      (m) => m.isBlock && match!.index >= m.start && match!.index < m.end
+    );
+    if (!isInsideBlock) {
+      allMatches.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        content: match[1].trim(),
+        isBlock: false,
+      });
+    }
+  }
+
+  // 收集行内公式 \(...\)
+  const inlineParenRegex = /\\\(([\s\S]*?)\\\)/g;
+  while ((match = inlineParenRegex.exec(text)) !== null) {
+    const isInsideBlock = allMatches.some(
+      (m) => m.isBlock && match!.index >= m.start && match!.index < m.end
     );
     if (!isInsideBlock) {
       allMatches.push({

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { renderMath } from '@/lib/math-render';
+import { renderBold } from '@/lib/text-render';
 
 interface Question {
   id: number;
@@ -29,6 +30,7 @@ export default function QuizComponent({ questions, subject }: QuizComponentProps
   const [answers, setAnswers] = useState<Record<number, 'A' | 'B' | 'C' | 'D'>>({});
   const [selectedAnswer, setSelectedAnswer] = useState<'A' | 'B' | 'C' | 'D' | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [startedAt] = useState(() => Date.now());
 
   const currentQuestion = questions[currentIndex];
   const isLastQuestion = currentIndex === questions.length - 1;
@@ -40,6 +42,14 @@ export default function QuizComponent({ questions, subject }: QuizComponentProps
   const handleSelect = (option: 'A' | 'B' | 'C' | 'D') => {
     setSelectedAnswer(option);
     setAnswers({ ...answers, [currentIndex]: option });
+  };
+
+  const isFirstQuestion = currentIndex === 0;
+
+  const handlePrev = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1);
+    }
   };
 
   const handleNext = () => {
@@ -59,13 +69,16 @@ export default function QuizComponent({ questions, subject }: QuizComponentProps
     try {
       const selectedPath = JSON.parse(sessionStorage.getItem('selectedPath') || '{}');
       
-      // 计算分数
-      let score = 0;
-      questions.forEach((q, index) => {
-        if (answers[index] === q.correctAnswer) {
-          score += 10;
-        }
-      });
+      // 计算分数：按正确率折算为 0–100 分，支持任意题目数量
+      const correctCount = questions.filter(
+        (q, index) => answers[index] === q.correctAnswer
+      ).length;
+      const score =
+        questions.length > 0
+          ? Math.round((correctCount / questions.length) * 100)
+          : 0;
+
+      const durationSeconds = Math.round((Date.now() - startedAt) / 1000);
 
       // 保存报告
       const response = await fetch('/api/student/save-report', {
@@ -79,6 +92,7 @@ export default function QuizComponent({ questions, subject }: QuizComponentProps
           questions,
           answers,
           score,
+          durationSeconds,
         }),
       });
 
@@ -128,29 +142,54 @@ export default function QuizComponent({ questions, subject }: QuizComponentProps
         </div>
 
         <div className="glass-effect rounded-2xl p-8 mb-6">
-          <h3 className="text-xl font-bold text-white mb-6">
-            {renderMath(currentQuestion.question)}
+          <h3
+            className={`text-xl font-bold text-white mb-6 ${
+              subject === 'english' ? 'break-words' : ''
+            }`}
+          >
+            {subject === 'math'
+              ? renderMath(currentQuestion.question)
+              : subject === 'english'
+                ? renderBold(currentQuestion.question)
+                : currentQuestion.question}
           </h3>
-          
+
           <div className="space-y-4">
             {(['A', 'B', 'C', 'D'] as const).map((option) => (
               <button
                 key={option}
                 onClick={() => handleSelect(option)}
                 className={`w-full p-4 rounded-lg border-2 text-left transition ${
+                  subject === 'english' ? 'break-words' : ''
+                } ${
                   selectedAnswer === option
                     ? 'border-blue-500 bg-blue-500/20'
                     : 'border-blue-500/30 hover:border-blue-500 hover:bg-blue-500/10'
                 }`}
               >
                 <span className="font-bold text-blue-400 mr-2">{option}.</span>
-                {renderMath(currentQuestion.options[option])}
+                {subject === 'math'
+                  ? renderMath(currentQuestion.options[option])
+                  : subject === 'english'
+                    ? renderBold(currentQuestion.options[option])
+                    : currentQuestion.options[option]}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex justify-between items-center">
+          <div>
+            {!isFirstQuestion && (
+              <button
+                type="button"
+                onClick={handlePrev}
+                className="px-8 py-3 bg-blue-600 rounded-lg hover:bg-blue-700 transition whitespace-nowrap"
+              >
+                上一题
+              </button>
+            )}
+          </div>
           <button
             onClick={handleNext}
             disabled={!selectedAnswer}

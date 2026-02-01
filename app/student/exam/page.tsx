@@ -31,16 +31,23 @@ export default async function ExamPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {subjects.map((subject) => (
-            <Link
-              key={subject.id}
-              href={`/student/exam/${subject.id}/select`}
-              className="glass-effect rounded-2xl p-8 cursor-pointer transform transition-all duration-300 hover:scale-105 glow-blue-hover"
-            >
-              <div className="text-center">
-                <div className="text-6xl mb-4">{subject.icon}</div>
-                <h2 className="text-2xl font-bold text-blue-400">{subject.name}</h2>
-              </div>
-            </Link>
+            <div key={subject.id} className="flex flex-col gap-4">
+              <Link
+                href={`/student/exam/${subject.id}/select`}
+                className="glass-effect rounded-2xl p-6 cursor-pointer transform transition-all duration-300 hover:scale-105 glow-blue-hover flex flex-col items-center justify-center min-h-[140px]"
+              >
+                <div className="text-5xl mb-2">{subject.icon}</div>
+                <h2 className="text-xl font-bold text-blue-400">{subject.name}</h2>
+              </Link>
+              <Link
+                href={`/student/exam/${subject.id}/knowledge-tree`}
+                className="glass-effect rounded-2xl p-6 cursor-pointer transform transition-all duration-300 hover:scale-105 glow-blue-hover flex flex-col items-center justify-center min-h-[120px] border border-cyan-500/30"
+              >
+                <div className="text-4xl mb-2">🌳</div>
+                <h2 className="text-lg font-bold text-cyan-400">{subject.name}知识树</h2>
+                <p className="text-gray-400 text-xs mt-1">层级结构 · 掌握情况</p>
+              </Link>
+            </div>
           ))}
         </div>
       </div>
