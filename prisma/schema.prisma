@@ -46,8 +46,6 @@ model Student {
   teacher           Teacher  @relation(fields: [createdByTeacherId], references: [id])
   assignments       Assignment[]
   examReports       ExamReport[]
-  wrongNotebooks    WrongNotebook[]
-  wrongQuestions    WrongQuestion[]
 
   @@map("students")
 }
@@ -80,31 +78,4 @@ model ExamReport {
   student     Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@map("exam_reports")
-}
-
-// AI错题本：与学生绑定，与通关测隔离
-model WrongNotebook {
-  id        String   @id @default(uuid())
-  studentId String   @map("student_id")
-  name      String   // 错题本名称
-  createdAt DateTime @default(now()) @map("created_at")
-
-  student   Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  questions WrongQuestion[]
-
-  @@map("wrong_notebooks")
-}
-
-model WrongQuestion {
-  id         String   @id @default(uuid())
-  studentId  String   @map("student_id")
-  notebookId String?  @map("notebook_id") // null = 未归类，在主页展示
-  name       String   // 错题名称（如知识点）
-  content    String   @db.Text // 题目文本
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  student  Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  notebook WrongNotebook?  @relation(fields: [notebookId], references: [id], onDelete: Cascade)
-
-  @@map("wrong_questions")
 }
