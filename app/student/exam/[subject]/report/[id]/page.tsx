@@ -38,7 +38,7 @@ export default async function ReportPage({
     selectedPath
   );
   const studentName =
-    report.student?.nickname || report.student?.username || '学生';
+    report.student?.username || '学生';
 
   return (
     <div className="min-h-screen p-8">
