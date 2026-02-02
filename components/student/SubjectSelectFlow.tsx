@@ -196,7 +196,7 @@ export default function SubjectSelectFlow({ subject }: SubjectSelectFlowProps) {
             disabled={loading}
             className="px-6 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 ml-auto"
           >
-            {loading ? '生成题目中...' : '开始答题'}
+            {loading ? '生成题目中，约需 一分钟，请稍候…' : '开始答题'}
           </button>
         )}
       </div>

@@ -8,6 +8,14 @@ import computerData from '@/data/computer_exam_nodes.json';
 
 type ExamNode = { [key: string]: string | string[] };
 
+// 短期缓存：同一「科目+选择路径」5 分钟内直接返回，避免重复调 DeepSeek
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const questionCache = new Map<string, { questions: unknown[]; ts: number }>();
+
+function cacheKey(subject: string, selectedPath: Record<string, string>): string {
+  return `${subject}:${JSON.stringify(selectedPath)}`;
+}
+
 const SUBJECT_KEY_MAP: Record<string, string> = {
   大学语文: 'chinese',
   大学英语: 'english',
@@ -70,7 +78,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const key = cacheKey(subject, selectedPath);
+    const cached = questionCache.get(key);
+    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+      return NextResponse.json({ questions: cached.questions });
+    }
+
     const questions = await generateQuestions(subject, sectionPayload);
+    questionCache.set(key, { questions, ts: Date.now() });
 
     return NextResponse.json({ questions });
   } catch (error: any) {
