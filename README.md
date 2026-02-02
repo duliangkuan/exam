@@ -58,8 +58,26 @@ npm run dev
    - `JWT_SECRET`: 随机生成的密钥
    - `DEEPSEEK_API_KEY`: Deepseek API密钥
 
-4. 部署完成后，运行数据库迁移：
-   - 在Vercel项目设置中，找到数据库，运行 `npx prisma db push`
+4. **重要：部署后必须运行数据库迁移**
+   
+   如果遇到"保存报告失败"等数据库错误，说明数据库结构未同步。解决方法：
+   
+   **方法1：通过Vercel CLI（推荐）**
+   ```bash
+   # 拉取环境变量
+   vercel env pull .env.local
+   
+   # 运行数据库迁移
+   npx prisma db push
+   ```
+   
+   **方法2：通过Vercel Dashboard**
+   - 进入项目设置 → 数据库
+   - 在数据库控制台运行：`npx prisma db push`
+   
+   **方法3：自动迁移（已配置）**
+   - 已更新 `vercel.json`，构建时会自动运行数据库迁移
+   - 如果自动迁移失败，请使用方法1或方法2手动运行
 
 ## 默认管理员密码
 
