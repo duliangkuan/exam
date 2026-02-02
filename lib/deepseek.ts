@@ -250,3 +250,267 @@ ${summary.wrongQuestionTexts.length > 0 ? `- 错题题干摘要（供分析薄�
   }
   return parsed;
 }
+
+/**
+ * AI 分析错题（返回详细解析）
+ */
+export async function analyzeWrongQuestion(questionText: string): Promise<string> {
+  const apiKey = process.env.DEEPSEEK_API_KEY || DEEPSEEK_API_KEY;
+  const prompt = `你是一位专业的专升本考试辅导老师。请对以下题目进行最完整、最详细、最全面的解析。
+
+题目：
+${questionText}
+
+要求：
+1. 解析要完整、详细、全面，帮助学生彻底理解这道题。
+2. 如果题目涉及数学公式，请用 LaTeX 格式（$...$ 包裹）书写，例如：$x^2$、$\\frac{a}{b}$、$\\sqrt{x}$、$\\lim_{n\\to\\infty}$ 等。
+3. 解析应包括：题目考查的知识点、解题思路、详细步骤、易错点提醒等。
+4. 直接返回解析内容，不要额外的说明或格式标记。`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90_000);
+
+  try {
+    const response = await fetch(DEEPSEEK_API_URL, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 2000,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('AI analysis API failed:', response.status, errorText);
+      throw new Error('AI 分析失败，请稍后重试');
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content?.trim();
+    if (!content) throw new Error('未获取到解析内容');
+
+    return content;
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw new Error('AI 分析超时（约 90 秒），请重试');
+    }
+    console.error('AI analysis error:', error);
+    throw new Error(error.message || 'AI 分析失败，请重试');
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * 举一反三（生成3道同类型单选题）
+ */
+export async function generateSimilarQuestions(questionText: string): Promise<Question[]> {
+  const apiKey = process.env.DEEPSEEK_API_KEY || DEEPSEEK_API_KEY;
+  const prompt = `你是专升本考试出题专家。请根据以下题目，出3道同类型、类似的单选题，并提供每道题的正确答案和详细解析。
+
+原题：
+${questionText}
+
+要求：
+1. 必须恰好出3道单选题，不多不少。
+2. 题目类型、难度、考查知识点要与原题类似。
+3. 每道题必须包含4个选项（A、B、C、D），且只有一个正确答案。
+4. 如果涉及数学公式，必须用 LaTeX 格式（$...$ 包裹），例如：$x^2$、$\\frac{a}{b}$、$\\sqrt{x}$、$\\lim_{n\\to\\infty}$ 等。
+5. 只返回一个JSON对象，不要任何说明、不要markdown代码块，直接以 { 开头、以 } 结尾。
+
+格式：
+{
+  "questions": [
+    {
+      "id": 1,
+      "question": "题目内容（数学用 $...$ 包裹）",
+      "options": { "A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D" },
+      "correctAnswer": "A",
+      "explanation": "解析内容（公式同样用$...$）"
+    },
+    {
+      "id": 2,
+      ...
+    },
+    {
+      "id": 3,
+      ...
+    }
+  ]
+}
+
+请直接输出上述格式的JSON，共3道题。`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90_000);
+
+  try {
+    const response = await fetch(DEEPSEEK_API_URL, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.6,
+        max_tokens: 3000,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Similar questions API failed:', response.status, errorText);
+      throw new Error('生成举一反三题目失败，请稍后重试');
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content?.trim();
+    if (!content) throw new Error('未获取到题目内容');
+
+    let jsonContent = content.trim();
+    if (jsonContent.includes('```')) {
+      const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) jsonContent = jsonMatch[1].trim();
+    }
+
+    function tryParse(raw: string): QuestionsResponse | null {
+      try {
+        return JSON.parse(raw) as QuestionsResponse;
+      } catch {
+        return null;
+      }
+    }
+
+    let parsed: QuestionsResponse | null = tryParse(jsonContent);
+    if (!parsed) {
+      jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1');
+      parsed = tryParse(jsonContent);
+    }
+    if (!parsed) {
+      const firstBrace = jsonContent.indexOf('{');
+      if (firstBrace >= 0) {
+        let depth = 0;
+        let end = -1;
+        for (let i = firstBrace; i < jsonContent.length; i++) {
+          const c = jsonContent[i];
+          if (c === '"' && jsonContent[i - 1] !== '\\') {
+            const close = jsonContent.indexOf('"', i + 1);
+            if (close === -1) break;
+            i = close;
+            continue;
+          }
+          if (c === '{') depth++;
+          if (c === '}') {
+            depth--;
+            if (depth === 0) {
+              end = i;
+              break;
+            }
+          }
+        }
+        if (end > firstBrace) {
+          parsed = tryParse(jsonContent.slice(firstBrace, end + 1));
+        }
+      }
+    }
+    if (!parsed) {
+      console.error('Raw content preview:', content.substring(0, 500));
+      throw new Error('JSON解析失败，返回内容格式不正确');
+    }
+
+    if (!parsed.questions || !Array.isArray(parsed.questions)) {
+      throw new Error('题目格式不正确');
+    }
+
+    let list = parsed.questions;
+    if (list.length < 3) {
+      throw new Error(`生成的题目数量不足（${list.length}道），请重试`);
+    }
+    if (list.length > 3) {
+      list = list.slice(0, 3);
+    }
+
+    const normalized = list.map((q, i) => ({
+      id: i + 1,
+      question: String(q?.question ?? '').trim(),
+      options: {
+        A: String(q?.options?.A ?? '').trim(),
+        B: String(q?.options?.B ?? '').trim(),
+        C: String(q?.options?.C ?? '').trim(),
+        D: String(q?.options?.D ?? '').trim(),
+      },
+      correctAnswer: (['A', 'B', 'C', 'D'].includes(String(q?.correctAnswer ?? '')) ? q.correctAnswer : 'A') as 'A' | 'B' | 'C' | 'D',
+      explanation: String(q?.explanation ?? '').trim(),
+    }));
+
+    return normalized;
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw new Error('生成举一反三题目超时（约 90 秒），请重试');
+    }
+    console.error('Similar questions error:', error);
+    throw new Error(error.message || '生成举一反三题目失败，请重试');
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * AI 对话（实时聊天）
+ */
+export async function chatWithAI(messages: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<string> {
+  const apiKey = process.env.DEEPSEEK_API_KEY || DEEPSEEK_API_KEY;
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90_000);
+
+  try {
+    const response = await fetch(DEEPSEEK_API_URL, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: messages.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+        })),
+        temperature: 0.7,
+        max_tokens: 2000,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('AI chat API failed:', response.status, errorText);
+      throw new Error('AI 对话失败，请稍后重试');
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content?.trim();
+    if (!content) throw new Error('未获取到回复内容');
+
+    return content;
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw new Error('AI 对话超时（约 90 秒），请重试');
+    }
+    console.error('AI chat error:', error);
+    throw new Error(error.message || 'AI 对话失败，请重试');
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}

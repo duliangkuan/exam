@@ -46,6 +46,8 @@ model Student {
   teacher           Teacher  @relation(fields: [createdByTeacherId], references: [id])
   assignments       Assignment[]
   examReports       ExamReport[]
+  wrongBooks        WrongBook[]
+  wrongQuestions    WrongQuestion[]
 
   @@map("students")
 }
@@ -78,4 +80,37 @@ model ExamReport {
   student     Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@map("exam_reports")
+}
+
+// AI错题本表
+model WrongBook {
+  id        String   @id @default(uuid())
+  studentId String   @map("student_id")
+  name      String   // 错题本名称
+  sortOrder Int      @default(0) @map("sort_order") // 排序序号
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  student   Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  questions WrongQuestion[]
+
+  @@map("wrong_books")
+  @@index([studentId, sortOrder])
+}
+
+model WrongQuestion {
+  id          String    @id @default(uuid())
+  studentId   String    @map("student_id")
+  wrongBookId String?   @map("wrong_book_id") // null 表示未归类
+  name        String    // 错题名称（知识点）
+  content     String    // 题目完整文本
+  sortOrder   Int       @default(0) @map("sort_order") // 错题本内排序
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  student   Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  wrongBook WrongBook? @relation(fields: [wrongBookId], references: [id], onDelete: SetNull)
+
+  @@map("wrong_questions")
+  @@index([studentId, wrongBookId, sortOrder])
 }
