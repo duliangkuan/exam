@@ -37,10 +37,14 @@ ${JSON.stringify(knowledgePoints, null, 2)}
 - 其它：指数 $x^2$、求和 $\\\\sum$、积分 $\\\\int$ 等一律用 $...$ 包裹。
 这样前端才能正确渲染，学生才能看懂。凡有数学符号的地方都必须用 $...$ 包住。
 
-硬性要求：
+【重要：输出格式要求】
 1. 必须恰好出10道单选题，不多不少。
 2. 题目、选项、解析中的文字不要包含未转义的换行或引号；数学部分严格按上面规范用 $...$ 书写，避免破坏 JSON（反斜杠写 \\\\）。
-3. 只返回一个JSON对象，不要任何说明、不要markdown代码块，直接以 { 开头、以 } 结尾。
+3. **严禁输出任何思考过程、计算步骤、分析内容、重新计算、尝试或解释说明**
+4. **严禁输出任何markdown代码块标记（如```json或```）**
+5. **严禁输出任何前置或后置文字、说明或注释**
+6. **只输出一个纯JSON对象，直接以 { 开头、以 } 结尾，中间不要有任何其他内容**
+7. 确保JSON格式完全正确，所有字符串都用双引号包裹，所有逗号和括号都正确匹配。
 
 每题结构（严格按此字段名）：
 {
@@ -55,7 +59,7 @@ ${JSON.stringify(knowledgePoints, null, 2)}
   ]
 }
 
-请直接输出上述格式的JSON，共10道题。`;
+现在直接输出上述格式的JSON，共10道题。不要任何其他内容。`;
 
   const apiKey = process.env.DEEPSEEK_API_KEY || DEEPSEEK_API_KEY;
   // 移除超时限制，允许数学题目生成花费更长时间
@@ -71,11 +75,15 @@ ${JSON.stringify(knowledgePoints, null, 2)}
         model: 'deepseek-chat',
         messages: [
           {
+            role: 'system',
+            content: '你是一个专业的出题助手。严格按照用户要求输出JSON格式的题目，不要输出任何思考过程、计算步骤或解释说明。只输出纯JSON对象。',
+          },
+          {
             role: 'user',
             content: prompt,
           },
         ],
-        temperature: 0.5,
+        temperature: 0.3,
         max_tokens: 8000,
       }),
     });
@@ -96,7 +104,7 @@ ${JSON.stringify(knowledgePoints, null, 2)}
 
     // 记录完整内容用于调试
     console.log('API返回内容长度:', content.length);
-    console.log('API返回内容预览:', content.substring(0, 300));
+    console.log('API返回内容预览:', content.substring(0, 500));
 
     let jsonContent = content.trim();
     
@@ -111,16 +119,80 @@ ${JSON.stringify(knowledgePoints, null, 2)}
       }
     }
 
-    // 移除可能的前置说明文字（找到第一个{之前的内容）
+    // 移除思考过程：查找并移除包含常见思考关键词的段落
+    // 这些关键词通常出现在思考过程中：重新计算、可能、但是、不过、如果、考虑、尝试等
+    const thinkingPatterns = [
+      /重新计算[^]*?\{/g,
+      /可能[^]*?\{/g,
+      /但是[^]*?\{/g,
+      /不过[^]*?\{/g,
+      /如果[^]*?\{/g,
+      /考虑[^]*?\{/g,
+      /尝试[^]*?\{/g,
+      /计算[^]*?\{/g,
+      /分析[^]*?\{/g,
+      /作为[^]*?\{/g,
+    ];
+    
+    // 找到第一个{的位置
     const firstBrace = jsonContent.indexOf('{');
     if (firstBrace > 0) {
+      // 移除第一个{之前的所有内容（包括思考过程）
       jsonContent = jsonContent.substring(firstBrace);
     }
 
-    // 移除可能的后续说明文字（找到最后一个}之后的内容）
-    const lastBrace = jsonContent.lastIndexOf('}');
+    // 找到最后一个}的位置
+    let lastBrace = jsonContent.lastIndexOf('}');
     if (lastBrace >= 0 && lastBrace < jsonContent.length - 1) {
+      // 移除最后一个}之后的所有内容
       jsonContent = jsonContent.substring(0, lastBrace + 1);
+    }
+    
+    // 如果仍然包含多个JSON对象，尝试提取最大的那个（通常是完整的）
+    const braceMatches = Array.from(jsonContent.matchAll(/\{/g));
+    if (braceMatches.length > 1) {
+      // 找到最外层JSON对象的结束位置
+      let depth = 0;
+      let startIdx = -1;
+      let endIdx = -1;
+      let inString = false;
+      let escapeNext = false;
+      
+      for (let i = 0; i < jsonContent.length; i++) {
+        const c = jsonContent[i];
+        
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
+        }
+        
+        if (c === '\\') {
+          escapeNext = true;
+          continue;
+        }
+        
+        if (c === '"' && !escapeNext) {
+          inString = !inString;
+          continue;
+        }
+        
+        if (inString) continue;
+        
+        if (c === '{') {
+          if (depth === 0) startIdx = i;
+          depth++;
+        } else if (c === '}') {
+          depth--;
+          if (depth === 0 && startIdx >= 0) {
+            endIdx = i;
+            break;
+          }
+        }
+      }
+      
+      if (startIdx >= 0 && endIdx > startIdx) {
+        jsonContent = jsonContent.substring(startIdx, endIdx + 1);
+      }
     }
 
     function tryParse(raw: string): QuestionsResponse | null {
@@ -378,12 +450,15 @@ export async function generateSimilarQuestions(questionText: string): Promise<Qu
 原题：
 ${questionText}
 
-要求：
+【重要：输出格式要求】
 1. 必须恰好出3道单选题，不多不少。
 2. 题目类型、难度、考查知识点要与原题类似。
 3. 每道题必须包含4个选项（A、B、C、D），且只有一个正确答案。
 4. 如果涉及数学公式，必须用 LaTeX 格式（$...$ 包裹），例如：$x^2$、$\\frac{a}{b}$、$\\sqrt{x}$、$\\lim_{n\\to\\infty}$ 等。
-5. 只返回一个JSON对象，不要任何说明、不要markdown代码块，直接以 { 开头、以 } 结尾。
+5. **严禁输出任何思考过程、计算步骤、分析内容或解释说明**
+6. **严禁输出任何markdown代码块标记（如```json或```）**
+7. **严禁输出任何前置或后置文字、说明或注释**
+8. **只输出一个纯JSON对象，直接以 { 开头、以 } 结尾，中间不要有任何其他内容**
 
 格式：
 {
@@ -406,7 +481,7 @@ ${questionText}
   ]
 }
 
-请直接输出上述格式的JSON，共3道题。`;
+现在直接输出上述格式的JSON，共3道题。不要任何其他内容。`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 90_000);
@@ -421,8 +496,17 @@ ${questionText}
       },
       body: JSON.stringify({
         model: 'deepseek-chat',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.6,
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个专业的出题助手。严格按照用户要求输出JSON格式的题目，不要输出任何思考过程、计算步骤或解释说明。只输出纯JSON对象。',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.3,
         max_tokens: 3000,
       }),
     });
@@ -438,9 +522,73 @@ ${questionText}
     if (!content) throw new Error('未获取到题目内容');
 
     let jsonContent = content.trim();
+    
+    // 移除markdown代码块标记
     if (jsonContent.includes('```')) {
       const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) jsonContent = jsonMatch[1].trim();
+      if (jsonMatch) {
+        jsonContent = jsonMatch[1].trim();
+      } else {
+        jsonContent = jsonContent.replace(/```(?:json)?/g, '').replace(/```/g, '').trim();
+      }
+    }
+
+    // 移除可能的前置说明文字（找到第一个{之前的内容）
+    const firstBrace = jsonContent.indexOf('{');
+    if (firstBrace > 0) {
+      jsonContent = jsonContent.substring(firstBrace);
+    }
+
+    // 移除可能的后续说明文字（找到最后一个}之后的内容）
+    let lastBrace = jsonContent.lastIndexOf('}');
+    if (lastBrace >= 0 && lastBrace < jsonContent.length - 1) {
+      jsonContent = jsonContent.substring(0, lastBrace + 1);
+    }
+    
+    // 如果包含多个JSON对象，提取最大的那个
+    const braceMatches = Array.from(jsonContent.matchAll(/\{/g));
+    if (braceMatches.length > 1) {
+      let depth = 0;
+      let startIdx = -1;
+      let endIdx = -1;
+      let inString = false;
+      let escapeNext = false;
+      
+      for (let i = 0; i < jsonContent.length; i++) {
+        const c = jsonContent[i];
+        
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
+        }
+        
+        if (c === '\\') {
+          escapeNext = true;
+          continue;
+        }
+        
+        if (c === '"' && !escapeNext) {
+          inString = !inString;
+          continue;
+        }
+        
+        if (inString) continue;
+        
+        if (c === '{') {
+          if (depth === 0) startIdx = i;
+          depth++;
+        } else if (c === '}') {
+          depth--;
+          if (depth === 0 && startIdx >= 0) {
+            endIdx = i;
+            break;
+          }
+        }
+      }
+      
+      if (startIdx >= 0 && endIdx > startIdx) {
+        jsonContent = jsonContent.substring(startIdx, endIdx + 1);
+      }
     }
 
     function tryParse(raw: string): QuestionsResponse | null {
