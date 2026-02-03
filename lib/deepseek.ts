@@ -202,93 +202,191 @@ ${subject === '高等数学' || subject === 'math' ? `【数学公式书写规�
       }
     }
 
-    function tryParse(raw: string): QuestionsResponse | null {
+    /**
+     * 增强的 JSON 解析函数，带详细错误信息
+     */
+    function tryParse(raw: string, attempt: number = 0): QuestionsResponse | null {
       try {
-        return JSON.parse(raw) as QuestionsResponse;
+        const parsed = JSON.parse(raw) as QuestionsResponse;
+        if (attempt > 0) {
+          console.log(`JSON解析成功（尝试${attempt + 1}）`);
+        }
+        return parsed;
       } catch (e: any) {
-        console.log('JSON解析尝试失败:', e.message?.substring(0, 100));
+        if (attempt === 0) {
+          // 只在第一次尝试时记录错误
+          console.log('JSON解析尝试失败:', e.message?.substring(0, 150));
+        }
         return null;
       }
     }
 
+    /**
+     * 修复常见的 JSON 格式问题
+     */
+    function fixJSONCommonIssues(text: string): string {
+      let fixed = text;
+      
+      // 1. 修复尾随逗号
+      fixed = fixed.replace(/,(\s*[}\]])/g, '$1');
+      
+      // 2. 修复单引号（替换为双引号，但要小心处理字符串内的引号）
+      // 只在对象键和字符串值中使用
+      fixed = fixed.replace(/'/g, '"');
+      
+      // 3. 修复未转义的控制字符（在字符串值中）
+      fixed = fixed.replace(/([^\\])\n/g, '$1\\n');
+      fixed = fixed.replace(/([^\\])\r/g, '$1\\r');
+      fixed = fixed.replace(/([^\\])\t/g, '$1\\t');
+      
+      // 4. 修复未转义的引号（在字符串值中，但要小心）
+      // 这个比较复杂，暂时跳过，避免破坏正确的 JSON
+      
+      // 5. 移除 BOM 标记
+      if (fixed.charCodeAt(0) === 0xFEFF) {
+        fixed = fixed.slice(1);
+      }
+      
+      return fixed;
+    }
+
+    /**
+     * 智能提取 JSON 对象
+     */
+    function extractJSONObject(text: string): string | null {
+      const firstBrace = text.indexOf('{');
+      if (firstBrace < 0) return null;
+      
+      let depth = 0;
+      let inString = false;
+      let escapeNext = false;
+      let startIdx = firstBrace;
+      let endIdx = -1;
+      
+      for (let i = firstBrace; i < text.length; i++) {
+        const c = text[i];
+        
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
+        }
+        
+        if (c === '\\') {
+          escapeNext = true;
+          continue;
+        }
+        
+        if (c === '"' && !escapeNext) {
+          inString = !inString;
+          continue;
+        }
+        
+        if (inString) continue;
+        
+        if (c === '{') {
+          if (depth === 0) startIdx = i;
+          depth++;
+        } else if (c === '}') {
+          depth--;
+          if (depth === 0) {
+            endIdx = i;
+            break;
+          }
+        }
+      }
+      
+      if (endIdx > startIdx) {
+        return text.slice(startIdx, endIdx + 1);
+      }
+      
+      return null;
+    }
+
     // 尝试1: 直接解析
-    let parsed: QuestionsResponse | null = tryParse(jsonContent);
+    let parsed: QuestionsResponse | null = tryParse(jsonContent, 0);
     
-    // 尝试2: 修复常见的JSON格式问题（尾随逗号）
+    // 尝试2: 修复常见的 JSON 格式问题后解析
     if (!parsed) {
-      let fixed = jsonContent.replace(/,(\s*[}\]])/g, '$1');
-      parsed = tryParse(fixed);
+      const fixed = fixJSONCommonIssues(jsonContent);
+      parsed = tryParse(fixed, 1);
       if (parsed) jsonContent = fixed;
     }
 
-    // 尝试3: 修复字符串值中未转义的换行符（仅在字符串值内部，不在已转义的部分）
-    // 注意：这个修复需要小心，可能会破坏已正确的JSON，所以只在其他方法都失败时使用
-    // 暂时跳过这个尝试，因为可能会引入更多问题
-
-    // 尝试4: 提取第一个完整的JSON对象
+    // 尝试3: 提取第一个完整的 JSON 对象后解析
     if (!parsed) {
-      const firstBrace = jsonContent.indexOf('{');
-      if (firstBrace >= 0) {
-        let depth = 0;
-        let inString = false;
-        let escapeNext = false;
-        let end = -1;
-        
-        for (let i = firstBrace; i < jsonContent.length; i++) {
-          const c = jsonContent[i];
-          
-          if (escapeNext) {
-            escapeNext = false;
-            continue;
-          }
-          
-          if (c === '\\') {
-            escapeNext = true;
-            continue;
-          }
-          
-          if (c === '"' && !escapeNext) {
-            inString = !inString;
-            continue;
-          }
-          
-          if (inString) continue;
-          
-          if (c === '{') depth++;
-          if (c === '}') {
-            depth--;
-            if (depth === 0) {
-              end = i;
-              break;
-            }
-          }
-        }
-        
-        if (end > firstBrace) {
-          const extracted = jsonContent.slice(firstBrace, end + 1);
-          parsed = tryParse(extracted);
-          if (parsed) jsonContent = extracted;
-        }
+      const extracted = extractJSONObject(jsonContent);
+      if (extracted) {
+        parsed = tryParse(extracted, 2);
+        if (parsed) jsonContent = extracted;
       }
     }
 
-    // 如果仍然失败，记录详细错误信息
+    // 尝试4: 提取 JSON 对象后再次修复格式问题
     if (!parsed) {
-      console.error('JSON解析失败 - 原始内容:', content);
-      console.error('JSON解析失败 - 处理后内容:', jsonContent);
-      console.error('JSON解析失败 - 内容长度:', jsonContent.length);
+      const extracted = extractJSONObject(jsonContent);
+      if (extracted) {
+        const fixed = fixJSONCommonIssues(extracted);
+        parsed = tryParse(fixed, 3);
+        if (parsed) jsonContent = fixed;
+      }
+    }
+
+    // 尝试5: 尝试修复可能的转义问题
+    if (!parsed) {
+      // 尝试修复双反斜杠（可能是转义问题）
+      let fixed = jsonContent.replace(/\\\\/g, '\\');
+      // 但保留已转义的引号
+      fixed = fixed.replace(/\\"/g, '"');
+      parsed = tryParse(fixed, 4);
+      if (parsed) jsonContent = fixed;
+    }
+
+    // 如果仍然失败，进行详细诊断
+    if (!parsed) {
+      // 记录详细诊断信息
+      const diagnostics = {
+        originalLength: content.length,
+        processedLength: jsonContent.length,
+        hasOpeningBrace: jsonContent.includes('{'),
+        hasClosingBrace: jsonContent.includes('}'),
+        hasQuestionsField: jsonContent.includes('questions'),
+        braceCount: (jsonContent.match(/\{/g) || []).length,
+        firstBraceIndex: jsonContent.indexOf('{'),
+        lastBraceIndex: jsonContent.lastIndexOf('}'),
+        preview: jsonContent.substring(0, 200),
+        endPreview: jsonContent.substring(Math.max(0, jsonContent.length - 200)),
+      };
       
-      // 尝试提供更有用的错误信息
-      let errorHint = '返回内容格式不正确';
-      if (!jsonContent.includes('{')) {
-        errorHint = '返回内容中未找到JSON对象';
-      } else if (!jsonContent.includes('questions')) {
-        errorHint = '返回内容中未找到questions字段';
-      } else if (jsonContent.length < 100) {
-        errorHint = '返回内容过短，可能不完整';
+      console.error('JSON解析失败 - 诊断信息:', JSON.stringify(diagnostics, null, 2));
+      console.error('JSON解析失败 - 完整处理后内容:', jsonContent);
+      
+      // 尝试最后一次解析以获取具体错误信息
+      try {
+        JSON.parse(jsonContent);
+      } catch (parseError: any) {
+        console.error('JSON解析具体错误:', parseError.message);
+        console.error('错误位置:', parseError.message.match(/position (\d+)/)?.[1]);
       }
       
-      throw new Error(`JSON解析失败：${errorHint}。请重试或联系管理员。`);
+      // 提供更有用的错误信息
+      let errorHint = '返回内容格式不正确';
+      if (!jsonContent.includes('{')) {
+        errorHint = '返回内容中未找到JSON对象，可能是AI返回了非JSON格式的内容';
+      } else if (!jsonContent.includes('}')) {
+        errorHint = 'JSON对象不完整，缺少结束括号';
+      } else if (diagnostics.braceCount === 0) {
+        errorHint = '未找到有效的JSON对象结构';
+      } else if (!jsonContent.includes('questions')) {
+        errorHint = '返回内容中未找到questions字段，JSON结构可能不正确';
+      } else if (jsonContent.length < 100) {
+        errorHint = '返回内容过短，可能不完整或被截断';
+      } else if (diagnostics.firstBraceIndex > 100) {
+        errorHint = 'JSON对象位置过远，可能包含大量前置文本';
+      } else if (diagnostics.lastBraceIndex < jsonContent.length - 100) {
+        errorHint = 'JSON对象可能不完整，包含后续文本';
+      }
+      
+      throw new Error(`JSON解析失败：${errorHint}。请重试，如问题持续存在请联系管理员。`);
     }
 
     if (!parsed.questions || !Array.isArray(parsed.questions)) {
@@ -599,49 +697,132 @@ ${questionText}
       }
     }
 
-    function tryParse(raw: string): QuestionsResponse | null {
+    /**
+     * 增强的 JSON 解析函数（用于举一反三）
+     */
+    function tryParseSimilar(raw: string, attempt: number = 0): QuestionsResponse | null {
       try {
-        return JSON.parse(raw) as QuestionsResponse;
-      } catch {
+        const parsed = JSON.parse(raw) as QuestionsResponse;
+        if (attempt > 0) {
+          console.log(`JSON解析成功（举一反三，尝试${attempt + 1}）`);
+        }
+        return parsed;
+      } catch (e: any) {
+        if (attempt === 0) {
+          console.log('JSON解析尝试失败（举一反三）:', e.message?.substring(0, 150));
+        }
         return null;
       }
     }
 
-    let parsed: QuestionsResponse | null = tryParse(jsonContent);
-    if (!parsed) {
-      jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1');
-      parsed = tryParse(jsonContent);
+    /**
+     * 修复常见的 JSON 格式问题
+     */
+    function fixJSONCommonIssuesSimilar(text: string): string {
+      let fixed = text;
+      fixed = fixed.replace(/,(\s*[}\]])/g, '$1');
+      if (fixed.charCodeAt(0) === 0xFEFF) {
+        fixed = fixed.slice(1);
+      }
+      return fixed;
     }
-    if (!parsed) {
-      const firstBrace = jsonContent.indexOf('{');
-      if (firstBrace >= 0) {
-        let depth = 0;
-        let end = -1;
-        for (let i = firstBrace; i < jsonContent.length; i++) {
-          const c = jsonContent[i];
-          if (c === '"' && jsonContent[i - 1] !== '\\') {
-            const close = jsonContent.indexOf('"', i + 1);
-            if (close === -1) break;
-            i = close;
-            continue;
-          }
-          if (c === '{') depth++;
-          if (c === '}') {
-            depth--;
-            if (depth === 0) {
-              end = i;
-              break;
-            }
-          }
+
+    /**
+     * 智能提取 JSON 对象（用于举一反三）
+     */
+    function extractJSONObjectSimilar(text: string): string | null {
+      const firstBrace = text.indexOf('{');
+      if (firstBrace < 0) return null;
+      
+      let depth = 0;
+      let inString = false;
+      let escapeNext = false;
+      let startIdx = firstBrace;
+      let endIdx = -1;
+      
+      for (let i = firstBrace; i < text.length; i++) {
+        const c = text[i];
+        
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
         }
-        if (end > firstBrace) {
-          parsed = tryParse(jsonContent.slice(firstBrace, end + 1));
+        
+        if (c === '\\') {
+          escapeNext = true;
+          continue;
+        }
+        
+        if (c === '"' && !escapeNext) {
+          inString = !inString;
+          continue;
+        }
+        
+        if (inString) continue;
+        
+        if (c === '{') {
+          if (depth === 0) startIdx = i;
+          depth++;
+        } else if (c === '}') {
+          depth--;
+          if (depth === 0) {
+            endIdx = i;
+            break;
+          }
         }
       }
+      
+      if (endIdx > startIdx) {
+        return text.slice(startIdx, endIdx + 1);
+      }
+      
+      return null;
     }
+
+    // 尝试1: 直接解析
+    let parsed: QuestionsResponse | null = tryParseSimilar(jsonContent, 0);
+    
+    // 尝试2: 修复常见的 JSON 格式问题后解析
     if (!parsed) {
-      console.error('Raw content preview:', content.substring(0, 500));
-      throw new Error('JSON解析失败，返回内容格式不正确');
+      const fixed = fixJSONCommonIssuesSimilar(jsonContent);
+      parsed = tryParseSimilar(fixed, 1);
+      if (parsed) jsonContent = fixed;
+    }
+
+    // 尝试3: 提取第一个完整的 JSON 对象后解析
+    if (!parsed) {
+      const extracted = extractJSONObjectSimilar(jsonContent);
+      if (extracted) {
+        parsed = tryParseSimilar(extracted, 2);
+        if (parsed) jsonContent = extracted;
+      }
+    }
+
+    // 尝试4: 提取 JSON 对象后再次修复格式问题
+    if (!parsed) {
+      const extracted = extractJSONObjectSimilar(jsonContent);
+      if (extracted) {
+        const fixed = fixJSONCommonIssuesSimilar(extracted);
+        parsed = tryParseSimilar(fixed, 3);
+        if (parsed) jsonContent = fixed;
+      }
+    }
+
+    // 如果仍然失败，记录详细错误信息
+    if (!parsed) {
+      console.error('JSON解析失败（举一反三） - 处理后内容:', jsonContent);
+      console.error('JSON解析失败（举一反三） - 内容长度:', jsonContent.length);
+      
+      let errorHint = '返回内容格式不正确';
+      if (!jsonContent.includes('{')) {
+        errorHint = '返回内容中未找到JSON对象';
+      } else if (!jsonContent.includes('questions')) {
+        errorHint = '返回内容中未找到questions字段';
+      } else if (jsonContent.length < 50) {
+        errorHint = '返回内容过短，可能不完整';
+      }
+      
+      throw new Error(`JSON解析失败：${errorHint}。请重试。`);
     }
 
     if (!parsed.questions || !Array.isArray(parsed.questions)) {
