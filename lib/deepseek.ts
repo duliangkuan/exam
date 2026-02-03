@@ -76,7 +76,7 @@ ${JSON.stringify(knowledgePoints, null, 2)}
           },
         ],
         temperature: 0.5,
-        max_tokens: 5000,
+        max_tokens: 8000,
       }),
     });
 
@@ -91,41 +91,90 @@ ${JSON.stringify(knowledgePoints, null, 2)}
 
     if (!content) {
       console.error('No content in API response:', JSON.stringify(data, null, 2));
-      throw new Error('No content in API response');
+      throw new Error('API未返回内容，请重试');
     }
 
+    // 记录完整内容用于调试
+    console.log('API返回内容长度:', content.length);
+    console.log('API返回内容预览:', content.substring(0, 300));
+
     let jsonContent = content.trim();
+    
+    // 移除markdown代码块标记
     if (jsonContent.includes('```')) {
       const jsonMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) jsonContent = jsonMatch[1].trim();
+      if (jsonMatch) {
+        jsonContent = jsonMatch[1].trim();
+      } else {
+        // 如果没有匹配到完整的代码块，尝试移除```标记
+        jsonContent = jsonContent.replace(/```(?:json)?/g, '').replace(/```/g, '').trim();
+      }
+    }
+
+    // 移除可能的前置说明文字（找到第一个{之前的内容）
+    const firstBrace = jsonContent.indexOf('{');
+    if (firstBrace > 0) {
+      jsonContent = jsonContent.substring(firstBrace);
+    }
+
+    // 移除可能的后续说明文字（找到最后一个}之后的内容）
+    const lastBrace = jsonContent.lastIndexOf('}');
+    if (lastBrace >= 0 && lastBrace < jsonContent.length - 1) {
+      jsonContent = jsonContent.substring(0, lastBrace + 1);
     }
 
     function tryParse(raw: string): QuestionsResponse | null {
       try {
         return JSON.parse(raw) as QuestionsResponse;
-      } catch {
+      } catch (e: any) {
+        console.log('JSON解析尝试失败:', e.message?.substring(0, 100));
         return null;
       }
     }
 
+    // 尝试1: 直接解析
     let parsed: QuestionsResponse | null = tryParse(jsonContent);
+    
+    // 尝试2: 修复常见的JSON格式问题（尾随逗号）
     if (!parsed) {
-      jsonContent = jsonContent.replace(/,(\s*[}\]])/g, '$1');
-      parsed = tryParse(jsonContent);
+      let fixed = jsonContent.replace(/,(\s*[}\]])/g, '$1');
+      parsed = tryParse(fixed);
+      if (parsed) jsonContent = fixed;
     }
+
+    // 尝试3: 修复字符串值中未转义的换行符（仅在字符串值内部，不在已转义的部分）
+    // 注意：这个修复需要小心，可能会破坏已正确的JSON，所以只在其他方法都失败时使用
+    // 暂时跳过这个尝试，因为可能会引入更多问题
+
+    // 尝试4: 提取第一个完整的JSON对象
     if (!parsed) {
       const firstBrace = jsonContent.indexOf('{');
       if (firstBrace >= 0) {
         let depth = 0;
+        let inString = false;
+        let escapeNext = false;
         let end = -1;
+        
         for (let i = firstBrace; i < jsonContent.length; i++) {
           const c = jsonContent[i];
-          if (c === '"' && jsonContent[i - 1] !== '\\') {
-            const close = jsonContent.indexOf('"', i + 1);
-            if (close === -1) break;
-            i = close;
+          
+          if (escapeNext) {
+            escapeNext = false;
             continue;
           }
+          
+          if (c === '\\') {
+            escapeNext = true;
+            continue;
+          }
+          
+          if (c === '"' && !escapeNext) {
+            inString = !inString;
+            continue;
+          }
+          
+          if (inString) continue;
+          
           if (c === '{') depth++;
           if (c === '}') {
             depth--;
@@ -135,14 +184,32 @@ ${JSON.stringify(knowledgePoints, null, 2)}
             }
           }
         }
+        
         if (end > firstBrace) {
-          parsed = tryParse(jsonContent.slice(firstBrace, end + 1));
+          const extracted = jsonContent.slice(firstBrace, end + 1);
+          parsed = tryParse(extracted);
+          if (parsed) jsonContent = extracted;
         }
       }
     }
+
+    // 如果仍然失败，记录详细错误信息
     if (!parsed) {
-      console.error('Raw content preview:', content.substring(0, 500));
-      throw new Error('JSON解析失败，返回内容格式不正确');
+      console.error('JSON解析失败 - 原始内容:', content);
+      console.error('JSON解析失败 - 处理后内容:', jsonContent);
+      console.error('JSON解析失败 - 内容长度:', jsonContent.length);
+      
+      // 尝试提供更有用的错误信息
+      let errorHint = '返回内容格式不正确';
+      if (!jsonContent.includes('{')) {
+        errorHint = '返回内容中未找到JSON对象';
+      } else if (!jsonContent.includes('questions')) {
+        errorHint = '返回内容中未找到questions字段';
+      } else if (jsonContent.length < 100) {
+        errorHint = '返回内容过短，可能不完整';
+      }
+      
+      throw new Error(`JSON解析失败：${errorHint}。请重试或联系管理员。`);
     }
 
     if (!parsed.questions || !Array.isArray(parsed.questions)) {
