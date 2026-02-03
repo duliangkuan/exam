@@ -6,6 +6,9 @@ import englishData from '@/data/english_exam_nodes.json';
 import mathData from '@/data/math_exam_nodes.json';
 import computerData from '@/data/computer_exam_nodes.json';
 
+// 设置最大执行时间为 5 分钟（300秒），允许数学题目生成花费更长时间
+export const maxDuration = 300;
+
 type ExamNode = { [key: string]: string | string[] };
 
 // 短期缓存：同一「科目+选择路径」5 分钟内直接返回，避免重复调 DeepSeek

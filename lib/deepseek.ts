@@ -58,13 +58,11 @@ ${JSON.stringify(knowledgePoints, null, 2)}
 请直接输出上述格式的JSON，共10道题。`;
 
   const apiKey = process.env.DEEPSEEK_API_KEY || DEEPSEEK_API_KEY;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 90_000); // 90 秒超时
+  // 移除超时限制，允许数学题目生成花费更长时间
 
   try {
     const response = await fetch(DEEPSEEK_API_URL, {
       method: 'POST',
-      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
@@ -174,14 +172,9 @@ ${JSON.stringify(knowledgePoints, null, 2)}
 
     return normalized;
   } catch (error: any) {
-    if (error?.name === 'AbortError') {
-      throw new Error('生成题目超时（约 90 秒），请重试');
-    }
     console.error('Deepseek API error:', error);
     const errorMessage = error.message || '生成题目失败，请重试';
     throw new Error(errorMessage);
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 
