@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
-import { getWrongQuestions, saveWrongQuestions } from '@/lib/wrong-book-cookie';
+import { getWrongQuestions, saveWrongQuestions } from '@/lib/wrong-book-db';
 
 // 批量更新错题排序（用于拖拽排序）
 export async function PATCH(request: NextRequest) {
@@ -16,7 +16,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: '题目ID列表无效' }, { status: 400 });
     }
 
-    const questions = await getWrongQuestions();
+    const questions = await getWrongQuestions(user.id);
     const targetQuestions = questions.filter(
       q => questionIds.includes(q.id) && q.wrongBookId === (wrongBookId || null)
     );
@@ -26,15 +26,19 @@ export async function PATCH(request: NextRequest) {
     }
 
     // 批量更新排序
-    questionIds.forEach((id: string, index: number) => {
+    const updatedQuestions = questionIds.map((id: string, index: number) => {
       const q = questions.find(q => q.id === id);
-      if (q) {
-        q.sortOrder = index;
-        q.updatedAt = new Date().toISOString();
+      if (!q) {
+        throw new Error(`错题 ${id} 不存在`);
       }
+      return {
+        ...q,
+        sortOrder: index,
+        updatedAt: new Date().toISOString(),
+      };
     });
 
-    await saveWrongQuestions(questions);
+    await saveWrongQuestions(user.id, updatedQuestions);
 
     return NextResponse.json({ success: true });
   } catch (error) {

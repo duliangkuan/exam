@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
-import { getWrongBooks, saveWrongBooks } from '@/lib/wrong-book-cookie';
+import { getWrongBooks, saveWrongBook } from '@/lib/wrong-book-db';
 
 // 更新错题本排序
 export async function PATCH(
@@ -18,20 +18,22 @@ export async function PATCH(
       return NextResponse.json({ error: '排序序号无效' }, { status: 400 });
     }
 
-    const wrongBooks = await getWrongBooks();
-    const bookIndex = wrongBooks.findIndex(b => b.id === params.id);
+    const wrongBooks = await getWrongBooks(user.id);
+    const book = wrongBooks.find(b => b.id === params.id);
 
-    if (bookIndex === -1) {
+    if (!book) {
       return NextResponse.json({ error: '错题本不存在' }, { status: 404 });
     }
 
-    wrongBooks[bookIndex].sortOrder = sortOrder;
-    wrongBooks[bookIndex].updatedAt = new Date().toISOString();
-    await saveWrongBooks(wrongBooks);
+    const updatedBook = await saveWrongBook(user.id, {
+      ...book,
+      sortOrder,
+      updatedAt: new Date().toISOString(),
+    });
 
     return NextResponse.json({
-      id: wrongBooks[bookIndex].id,
-      sortOrder: wrongBooks[bookIndex].sortOrder,
+      id: updatedBook.id,
+      sortOrder: updatedBook.sortOrder,
     });
   } catch (error) {
     console.error('Update wrong book order error:', error);

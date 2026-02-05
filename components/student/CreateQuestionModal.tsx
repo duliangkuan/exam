@@ -1,12 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import ReactCrop, { Crop, PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 
 interface CreateQuestionModalProps {
   isOpen: boolean;
   onClose: () => void;
   wrongBookId?: string | null;
+  subject?: string | null; // 学科：'chinese' | 'english' | 'math' | 'computer'
   onSuccess?: () => void;
 }
 
@@ -14,18 +17,26 @@ export default function CreateQuestionModal({
   isOpen,
   onClose,
   wrongBookId,
+  subject,
   onSuccess,
 }: CreateQuestionModalProps) {
   const router = useRouter();
-  const [mode, setMode] = useState<'select' | 'upload' | 'manual' | 'ocr-result' | 'saved'>('select');
+  const [mode, setMode] = useState<'select' | 'upload' | 'crop' | 'manual' | 'ocr-result' | 'saved'>('select');
   const [savedQuestionId, setSavedQuestionId] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [croppedImagePreview, setCroppedImagePreview] = useState<string | null>(null);
   const [ocrText, setOcrText] = useState('');
   const [manualText, setManualText] = useState('');
   const [questionName, setQuestionName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  // 图片裁剪相关状态
+  const [crop, setCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const imgRef = useRef<HTMLImageElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -33,20 +44,113 @@ export default function CreateQuestionModal({
       setImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImagePreview(reader.result as string);
+        const imageUrl = reader.result as string;
+        setImagePreview(imageUrl);
+        setCroppedImagePreview(null);
+        setCrop(undefined);
+        setCompletedCrop(undefined);
       };
       reader.readAsDataURL(file);
       setMode('upload');
     }
   };
 
+  // 初始化裁剪区域（默认全图，不限制比例）
+  const onImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { width, height } = e.currentTarget;
+    // 默认选择整张图片，用户可以自由调整
+    setCrop({
+      unit: '%',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    });
+  }, []);
+
+  // 将裁剪后的图片转换为 base64
+  const getCroppedImg = useCallback(async (): Promise<string | null> => {
+    if (!completedCrop || !imgRef.current || !canvasRef.current) {
+      return null;
+    }
+
+    const image = imgRef.current;
+    const canvas = canvasRef.current;
+    const crop = completedCrop;
+
+    const scaleX = image.naturalWidth / image.width;
+    const scaleY = image.naturalHeight / image.height;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      return null;
+    }
+
+    const pixelRatio = window.devicePixelRatio;
+    canvas.width = crop.width * scaleX * pixelRatio;
+    canvas.height = crop.height * scaleY * pixelRatio;
+
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    ctx.imageSmoothingQuality = 'high';
+
+    const cropX = crop.x * scaleX;
+    const cropY = crop.y * scaleY;
+
+    ctx.drawImage(
+      image,
+      cropX,
+      cropY,
+      crop.width * scaleX,
+      crop.height * scaleY,
+      0,
+      0,
+      crop.width * scaleX,
+      crop.height * scaleY
+    );
+
+    return new Promise((resolve) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(null);
+            return;
+          }
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            resolve(reader.result as string);
+          };
+          reader.readAsDataURL(blob);
+        },
+        'image/png',
+        1
+      );
+    });
+  }, [completedCrop]);
+
+  // 确认裁剪
+  const handleCropConfirm = async () => {
+    const croppedImage = await getCroppedImg();
+    if (croppedImage) {
+      setCroppedImagePreview(croppedImage);
+      setMode('crop');
+    }
+  };
+
+  // 跳过裁剪，直接使用原图
+  const handleSkipCrop = () => {
+    setCroppedImagePreview(imagePreview);
+    setMode('crop');
+  };
+
   const handleOCR = async () => {
-    if (!imagePreview) return;
+    // 使用裁剪后的图片，如果没有裁剪则使用原图
+    const imageToUse = croppedImagePreview || imagePreview;
+    if (!imageToUse) return;
     setLoading(true);
     setError('');
     try {
       // 提取 base64（去掉 data:image/... 前缀）
-      const base64 = imagePreview.split(',')[1];
+      const base64 = imageToUse.split(',')[1];
       const res = await fetch('/api/student/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -57,8 +161,20 @@ export default function CreateQuestionModal({
         setOcrText(data.text);
         setMode('ocr-result');
       } else {
-        const data = await res.json();
-        setError(data.error || 'OCR 识别失败，请重试');
+        // 检查响应类型，避免解析非 JSON 响应
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            const data = await res.json();
+            setError(data.error || 'OCR 识别失败，请重试');
+          } catch (e) {
+            setError(`OCR 识别失败 (${res.status}): ${res.statusText}`);
+          }
+        } else {
+          const text = await res.text();
+          console.error('OCR API 返回非 JSON 响应:', text.substring(0, 200));
+          setError(`OCR 识别失败 (${res.status}): 服务器错误`);
+        }
       }
     } catch (err: any) {
       setError(err.message || 'OCR 识别失败，请重试');
@@ -83,6 +199,7 @@ export default function CreateQuestionModal({
           name: questionName.trim() || '未命名错题',
           content: content.trim(),
           wrongBookId: wrongBookId || null,
+          subject: subject || null,
         }),
       });
       if (res.ok) {
@@ -91,8 +208,20 @@ export default function CreateQuestionModal({
         setMode('saved');
         if (onSuccess) onSuccess();
       } else {
-        const data = await res.json();
-        setError(data.error || '保存失败');
+        // 检查响应类型，避免解析非 JSON 响应
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            const data = await res.json();
+            setError(data.error || '保存失败');
+          } catch (e) {
+            setError(`保存失败 (${res.status}): ${res.statusText}`);
+          }
+        } else {
+          const text = await res.text();
+          console.error('API 返回非 JSON 响应:', text.substring(0, 200));
+          setError(`保存失败 (${res.status}): 服务器错误`);
+        }
       }
     } catch (err: any) {
       setError(err.message || '保存失败');
@@ -105,6 +234,9 @@ export default function CreateQuestionModal({
     setMode('select');
     setImageFile(null);
     setImagePreview(null);
+    setCroppedImagePreview(null);
+    setCrop(undefined);
+    setCompletedCrop(undefined);
     setOcrText('');
     setManualText('');
     setQuestionName('');
@@ -160,7 +292,61 @@ export default function CreateQuestionModal({
           <div className="space-y-4">
             {imagePreview && (
               <div className="mb-4">
-                <img src={imagePreview} alt="预览" className="max-w-full h-auto rounded-lg" />
+                <div className="mb-2 text-sm text-gray-400">拖动选择要识别的区域（可选）</div>
+                <div className="relative max-w-full overflow-auto bg-gray-900 rounded-lg p-4">
+                  <ReactCrop
+                    crop={crop}
+                    onChange={(_, percentCrop) => setCrop(percentCrop)}
+                    onComplete={(c) => setCompletedCrop(c)}
+                    aspect={undefined}
+                    minWidth={20}
+                    minHeight={20}
+                  >
+                    <img
+                      ref={imgRef}
+                      src={imagePreview}
+                      alt="预览"
+                      onLoad={onImageLoad}
+                      className="max-w-full h-auto"
+                      style={{ maxHeight: '60vh' }}
+                    />
+                  </ReactCrop>
+                </div>
+                <canvas ref={canvasRef} className="hidden" />
+              </div>
+            )}
+            <div className="flex gap-2">
+              {crop && completedCrop && (
+                <button
+                  onClick={handleCropConfirm}
+                  className="px-4 py-2 bg-purple-600 rounded-lg hover:bg-purple-700 transition"
+                >
+                  确认裁剪
+                </button>
+              )}
+              <button
+                onClick={handleSkipCrop}
+                className="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition"
+              >
+                {crop && completedCrop ? '跳过裁剪' : '下一步'}
+              </button>
+              <button
+                onClick={() => setMode('select')}
+                className="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
+              >
+                返回
+              </button>
+            </div>
+            {error && <p className="text-red-400 text-sm">{error}</p>}
+          </div>
+        )}
+
+        {mode === 'crop' && (
+          <div className="space-y-4">
+            <div className="mb-2 text-sm text-gray-400">裁剪后的图片预览</div>
+            {croppedImagePreview && (
+              <div className="mb-4">
+                <img src={croppedImagePreview} alt="裁剪预览" className="max-w-full h-auto rounded-lg" />
               </div>
             )}
             <div className="flex gap-2">
@@ -172,10 +358,10 @@ export default function CreateQuestionModal({
                 {loading ? '识别中...' : '下一步（OCR识别）'}
               </button>
               <button
-                onClick={() => setMode('select')}
+                onClick={() => setMode('upload')}
                 className="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
               >
-                返回
+                返回重新裁剪
               </button>
             </div>
             {error && <p className="text-red-400 text-sm">{error}</p>}
@@ -213,7 +399,7 @@ export default function CreateQuestionModal({
                 {loading ? '保存中...' : '确认保存'}
               </button>
               <button
-                onClick={() => setMode('upload')}
+                onClick={() => setMode('crop')}
                 className="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600"
               >
                 返回

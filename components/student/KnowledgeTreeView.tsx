@@ -86,7 +86,7 @@ export default function KnowledgeTreeView({
     <div className="relative">
       <div className="overflow-x-auto overflow-y-auto pb-8" style={{ minHeight: '500px' }}>
         <div className="inline-block p-6 min-w-full">
-          <TreeDiagram
+          <MindMapDiagram
             rootLabel={tree.rootLabel}
             nodes={tree.nodes}
             sectionStatus={sectionStatus}
@@ -107,7 +107,34 @@ export default function KnowledgeTreeView({
   );
 }
 
-function TreeDiagram({
+// 幕布式布局参数
+const LEVEL_WIDTH = 280; // 每层水平间距（px）
+const NODE_HEIGHT = 60; // 节点高度（px）
+const NODE_VERTICAL_GAP = 20; // 节点垂直间距（px）
+const CONNECTOR_LENGTH = 30; // 连接线长度（px）
+
+/** 计算节点树的总高度（用于布局） */
+function calculateTreeHeight(node: KnowledgeTreeNode): number {
+  if (!node.children || node.children.length === 0) {
+    return NODE_HEIGHT;
+  }
+  const childrenHeight = node.children.reduce(
+    (sum, child) => sum + calculateTreeHeight(child),
+    0
+  );
+  const gaps = (node.children.length - 1) * NODE_VERTICAL_GAP;
+  return Math.max(NODE_HEIGHT, childrenHeight + gaps);
+}
+
+/** 节点位置信息 */
+interface NodePosition {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function MindMapDiagram({
   rootLabel,
   nodes,
   sectionStatus,
@@ -118,112 +145,284 @@ function TreeDiagram({
   sectionStatus: SectionStatus;
   onSectionClick: (key: string | null) => void;
 }) {
+  // 计算总高度
+  let totalHeight = 0;
+  const firstLevelHeights: number[] = [];
+  for (const node of nodes) {
+    const height = calculateTreeHeight(node);
+    firstLevelHeights.push(height);
+    totalHeight += height;
+  }
+  totalHeight += (nodes.length - 1) * NODE_VERTICAL_GAP;
+  
+  // 计算第一层节点的起始Y位置
+  let currentY = 100; // 顶部留白
+  const firstLevelPositions: NodePosition[] = [];
+  for (let i = 0; i < nodes.length; i++) {
+    firstLevelPositions.push({
+      x: LEVEL_WIDTH,
+      y: currentY,
+      width: 200,
+      height: firstLevelHeights[i],
+    });
+    currentY += firstLevelHeights[i] + NODE_VERTICAL_GAP;
+  }
+
+  const totalWidth = LEVEL_WIDTH * 4; // 假设最多4层
+  const containerHeight = Math.max(totalHeight + 200, 800);
+
   return (
-    <div className="flex flex-col items-center gap-8">
-      {/* 主干：科目名 */}
+    <div
+      className="relative mx-auto"
+      style={{ 
+        width: `${totalWidth}px`, 
+        minHeight: `${containerHeight}px`,
+        padding: '40px'
+      }}
+    >
+      {/* 连接线 SVG */}
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        style={{ overflow: 'visible' }}
+      >
+        {nodes.map((node, i) => {
+          const pos = firstLevelPositions[i];
+          return (
+            <line
+              key={i}
+              x1={120}
+              y1={pos.y + NODE_HEIGHT / 2}
+              x2={pos.x}
+              y2={pos.y + NODE_HEIGHT / 2}
+              stroke="rgba(148, 163, 184, 0.5)"
+              strokeWidth="2"
+            />
+          );
+        })}
+      </svg>
+
+      {/* 中心节点 */}
       <div
-        className="relative flex-shrink-0 px-8 py-4 rounded-2xl font-bold text-xl text-blue-400 border-2 border-blue-500/50 bg-slate-800/90 shadow-lg glow-blue"
+        className="absolute rounded-xl border-2 border-blue-500/70 bg-blue-600/20 px-6 py-4 flex items-center justify-center font-bold text-lg text-blue-300 shadow-lg z-10"
         style={{
-          boxShadow: '0 0 20px rgba(59, 130, 246, 0.4), 0 0 40px rgba(59, 130, 246, 0.2)',
+          left: '0px',
+          top: `${firstLevelPositions.length > 0 
+            ? (firstLevelPositions[0].y + firstLevelPositions[firstLevelPositions.length - 1].y + firstLevelHeights[firstLevelHeights.length - 1]) / 2 - NODE_HEIGHT / 2
+            : 100}px`,
+          width: '200px',
+          height: `${NODE_HEIGHT}px`,
         }}
       >
-        {rootLabel}
+        <span className="text-center">{rootLabel}</span>
       </div>
-      {/* 主干到第一层的连接线 */}
-      {nodes.length > 0 && (
-        <div className="w-1 h-6 bg-gradient-to-b from-blue-500/60 to-transparent rounded-full" />
-      )}
-      {/* 第一层枝干 */}
-      <div className="flex flex-wrap justify-center gap-6">
-        {nodes.map((node, i) => (
-          <TreeNode
+
+      {/* 第一层分支 */}
+      {nodes.map((node, i) => {
+        const pos = firstLevelPositions[i];
+        return (
+          <MindMapBranch
             key={i}
             node={node}
             sectionStatus={sectionStatus}
             onSectionClick={onSectionClick}
             level={0}
+            x={pos.x}
+            y={pos.y}
+            isFirstLevel
           />
-        ))}
-      </div>
+        );
+      })}
     </div>
   );
 }
 
-function TreeNode({
+function MindMapBranch({
   node,
   sectionStatus,
   onSectionClick,
   level,
+  x,
+  y,
+  isFirstLevel,
 }: {
   node: KnowledgeTreeNode;
   sectionStatus: SectionStatus;
   onSectionClick: (key: string | null) => void;
   level: number;
+  x: number;
+  y: number;
+  isFirstLevel?: boolean;
 }) {
   const isLeaf = !!node.sectionKey;
-  const status = node.sectionKey
-    ? sectionStatus[node.sectionKey]
-    : undefined;
+  const status = node.sectionKey ? sectionStatus[node.sectionKey] : undefined;
   const passed = status?.passed ?? false;
   const hasReports = (status?.reportCount ?? 0) > 0;
-  const dim = isLeaf && !hasReports; // 无任何测试则灰暗
+  const dim = isLeaf && !hasReports;
 
-  const baseClass =
-    'rounded-xl border-2 transition-all duration-200 flex flex-col items-center justify-center';
   const levelColors = [
-    'border-cyan-500/50 bg-slate-800/80 text-cyan-300',
-    'border-emerald-500/40 bg-slate-800/70 text-emerald-300',
-    'border-amber-500/40 bg-slate-800/70 text-amber-300',
-    'border-blue-400/40 bg-slate-800/70 text-blue-200',
+    'border-rose-500/70 bg-rose-900/40 text-rose-100 shadow-lg',
+    'border-emerald-500/60 bg-emerald-900/30 text-emerald-100 shadow-md',
+    'border-amber-500/60 bg-amber-900/30 text-amber-100 shadow-md',
+    'border-blue-400/60 bg-blue-900/30 text-blue-100 shadow-md',
   ];
   const colorClass = levelColors[Math.min(level, levelColors.length - 1)];
 
   let stateClass = colorClass;
   if (isLeaf) {
-    if (passed) stateClass += ' shadow-lg ring-2 ring-green-400/60 bg-green-900/20';
+    if (passed)
+      stateClass += ' shadow-xl ring-2 ring-green-400/70 bg-green-900/30';
     else if (dim) stateClass += ' opacity-50 grayscale';
-    else stateClass += ' opacity-90';
+    else stateClass += ' opacity-95';
   }
 
-  const content = (
+  // 根据层级调整节点大小
+  const nodeSizes = {
+    0: 'px-5 py-3 min-w-[180px] text-sm',
+    1: 'px-4 py-2.5 min-w-[160px] text-xs',
+    2: 'px-3 py-2 min-w-[140px] text-xs',
+    3: 'px-2.5 py-1.5 min-w-[120px] text-[11px]',
+  };
+  const sizeClass = nodeSizes[Math.min(level, 3) as keyof typeof nodeSizes] || nodeSizes[3];
+
+  const nodeContent = (
     <div
-      className={`${baseClass} ${stateClass} ${
-        isLeaf ? 'cursor-pointer hover:scale-105 min-w-[100px] px-4 py-3' : 'px-4 py-2'
-      }`}
-      onClick={() => isLeaf && node.sectionKey && onSectionClick(node.sectionKey)}
-      title={isLeaf ? (passed ? '已通关' : hasReports ? '有测评未通关' : '暂无测评') : undefined}
+      className={`
+        rounded-lg border-2 transition-all duration-200 flex flex-col items-center justify-center
+        ${stateClass}
+        ${sizeClass}
+        ${isLeaf ? 'cursor-pointer hover:scale-105 hover:z-20' : ''}
+      `}
+      onClick={() =>
+        isLeaf && node.sectionKey && onSectionClick(node.sectionKey)
+      }
+      title={
+        isLeaf
+          ? passed
+            ? '已通关'
+            : hasReports
+              ? '有测评未通关'
+              : '暂无测评'
+          : undefined
+      }
+      style={{ height: `${NODE_HEIGHT}px` }}
     >
-      <span className="text-sm font-medium text-center break-words max-w-[140px]">
+      <span className="font-medium text-center break-words leading-tight px-2">
         {node.label}
       </span>
       {isLeaf && (
-        <span className="text-xs mt-1 opacity-70">
-          {passed ? '✓ 已通关' : hasReports ? `${status?.reportCount}次测评` : '未测'}
+        <span className={`mt-1 opacity-75 ${level <= 1 ? 'text-[10px]' : 'text-[9px]'}`}>
+          {passed
+            ? '✓ 已通关'
+            : hasReports
+              ? `${status?.reportCount}次测评`
+              : '未测'}
         </span>
       )}
     </div>
   );
 
   if (!node.children?.length) {
-    return content;
+    return (
+      <div
+        className="absolute z-10"
+        style={{ left: `${x}px`, top: `${y}px` }}
+      >
+        {nodeContent}
+      </div>
+    );
   }
 
+  // 计算子节点的位置
+  const childPositions: NodePosition[] = [];
+  let currentChildY = y;
+  
+  for (const child of node.children) {
+    const childHeight = calculateTreeHeight(child);
+    childPositions.push({
+      x: x + LEVEL_WIDTH,
+      y: currentChildY,
+      width: 200,
+      height: childHeight,
+    });
+    currentChildY += childHeight + NODE_VERTICAL_GAP;
+  }
+
+  // 调整当前节点位置，使其在子节点中间
+  const totalChildrenHeight = childPositions.reduce((sum, pos) => sum + pos.height, 0) + 
+    (childPositions.length - 1) * NODE_VERTICAL_GAP;
+  const adjustedY = childPositions[0]?.y + totalChildrenHeight / 2 - NODE_HEIGHT / 2;
+
   return (
-    <div className="flex flex-col items-center gap-3">
-      {content}
-      <div className="w-px h-4 bg-gradient-to-b from-slate-500 to-transparent rounded-full" />
-      <div className="flex flex-wrap justify-center gap-3">
-        {node.children.map((child, i) => (
-          <TreeNode
+    <>
+      {/* 当前节点 */}
+      <div
+        className="absolute z-10"
+        style={{ left: `${x}px`, top: `${adjustedY}px` }}
+      >
+        {nodeContent}
+      </div>
+      
+      {/* 连接线 */}
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        style={{ overflow: 'visible' }}
+      >
+        {node.children.map((child, i) => {
+          const childPos = childPositions[i];
+          const childCenterY = childPos.y + NODE_HEIGHT / 2;
+          const parentRightX = x + (level === 0 ? 180 : level === 1 ? 160 : 140);
+          const childLeftX = childPos.x;
+          
+          return (
+            <g key={i}>
+              {/* 水平线 */}
+              <line
+                x1={parentRightX}
+                y1={adjustedY + NODE_HEIGHT / 2}
+                x2={parentRightX + CONNECTOR_LENGTH}
+                y2={adjustedY + NODE_HEIGHT / 2}
+                stroke="rgba(148, 163, 184, 0.5)"
+                strokeWidth="2"
+              />
+              {/* 垂直线 */}
+              <line
+                x1={parentRightX + CONNECTOR_LENGTH}
+                y1={adjustedY + NODE_HEIGHT / 2}
+                x2={parentRightX + CONNECTOR_LENGTH}
+                y2={childCenterY}
+                stroke="rgba(148, 163, 184, 0.5)"
+                strokeWidth="2"
+              />
+              {/* 到子节点的水平线 */}
+              <line
+                x1={parentRightX + CONNECTOR_LENGTH}
+                y1={childCenterY}
+                x2={childLeftX}
+                y2={childCenterY}
+                stroke="rgba(148, 163, 184, 0.5)"
+                strokeWidth="2"
+              />
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* 子节点 */}
+      {node.children.map((child, i) => {
+        const childPos = childPositions[i];
+        return (
+          <MindMapBranch
             key={i}
             node={child}
             sectionStatus={sectionStatus}
             onSectionClick={onSectionClick}
             level={level + 1}
+            x={childPos.x}
+            y={childPos.y}
           />
-        ))}
-      </div>
-    </div>
+        );
+      })}
+    </>
   );
 }
 

@@ -11,8 +11,8 @@ export default function Home() {
   const [showStudentModal, setShowStudentModal] = useState(false);
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-8">
-      <div className="w-full max-w-6xl">
+    <div className="min-h-screen flex items-center justify-center p-8 bg-[#080c1c] relative overflow-hidden">
+      <div className="relative z-10 w-full max-w-6xl">
         <h1 className="text-5xl font-bold text-center mb-16 bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
           专升本学习系统
         </h1>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
-import { getWrongBooks, getWrongQuestions } from '@/lib/wrong-book-cookie';
+import { getWrongBooks, getWrongQuestions } from '@/lib/wrong-book-db';
 
 // 导出错题本（返回错题列表，前端生成文件）
 export async function GET(
@@ -13,14 +13,14 @@ export async function GET(
       return NextResponse.json({ error: '未授权' }, { status: 401 });
     }
 
-    const wrongBooks = await getWrongBooks();
+    const wrongBooks = await getWrongBooks(user.id);
     const wrongBook = wrongBooks.find(b => b.id === params.id);
 
     if (!wrongBook) {
       return NextResponse.json({ error: '错题本不存在' }, { status: 404 });
     }
 
-    const allQuestions = await getWrongQuestions();
+    const allQuestions = await getWrongQuestions(user.id);
     const questions = allQuestions
       .filter(q => q.wrongBookId === params.id)
       .sort((a, b) => {

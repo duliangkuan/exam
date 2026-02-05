@@ -63,7 +63,10 @@ export default function ViewQuestionModal({
         <AIAnalysisModal
           questionContent={questionContent}
           isOpen={showAnalysis}
-          onClose={() => setShowAnalysis(false)}
+          onClose={() => {
+            setShowAnalysis(false);
+            // 关闭AI分析后，主弹窗会自动显示（因为 isOpen 条件会重新满足）
+          }}
         />
       )}
 
@@ -71,7 +74,10 @@ export default function ViewQuestionModal({
         <SimilarQuestionsModal
           questionContent={questionContent}
           isOpen={showSimilar}
-          onClose={() => setShowSimilar(false)}
+          onClose={() => {
+            setShowSimilar(false);
+            // 关闭举一反三后，主弹窗会自动显示（因为 isOpen 条件会重新满足）
+          }}
         />
       )}
     </>

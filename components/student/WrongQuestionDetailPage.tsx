@@ -11,6 +11,7 @@ interface WrongQuestionDetailPageProps {
   questionName: string;
   questionContent: string;
   wrongBookId: string | null;
+  subject: string | null; // 学科：'chinese' | 'english' | 'math' | 'computer'
 }
 
 export default function WrongQuestionDetailPage({
@@ -18,6 +19,7 @@ export default function WrongQuestionDetailPage({
   questionName,
   questionContent,
   wrongBookId,
+  subject,
 }: WrongQuestionDetailPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -37,9 +39,15 @@ export default function WrongQuestionDetailPage({
   }, [searchParams]);
 
   const handleClose = () => {
-    if (wrongBookId) {
-      router.push(`/student/notebook/${wrongBookId}`);
+    // 根据新的路由结构返回
+    if (subject && wrongBookId) {
+      // 有学科和错题本，返回到错题本页面
+      router.push(`/student/notebook/${subject}/${wrongBookId}`);
+    } else if (subject) {
+      // 有学科但没有错题本，返回到学科页面
+      router.push(`/student/notebook/${subject}`);
     } else {
+      // 没有学科信息（旧数据），返回到学科选择页
       router.push('/student/notebook');
     }
   };

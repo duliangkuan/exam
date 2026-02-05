@@ -86,11 +86,11 @@ export function StudentProfileBadge({ studentId }: Props) {
   };
 
   return (
-    <>
+    <div className="relative">
       <button
         type="button"
         onClick={openModal}
-        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-500/50 bg-gray-800/80 text-blue-400 hover:bg-gray-700/80 transition text-sm"
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-500/50 bg-slate-800/80 backdrop-blur-sm text-blue-400 hover:bg-slate-700/80 transition text-sm"
         title="点击编辑昵称与届别"
       >
         <span>{profile.nickname}</span>
@@ -114,7 +114,7 @@ export function StudentProfileBadge({ studentId }: Props) {
                   value={editNickname}
                   onChange={(e) => setEditNickname(e.target.value)}
                   placeholder={DEFAULT_NICKNAME}
-                  className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-700/50 text-white placeholder-gray-500 focus:border-cyan-400/50 focus:outline-none"
                 />
               </div>
               <div>
@@ -122,7 +122,7 @@ export function StudentProfileBadge({ studentId }: Props) {
                 <select
                   value={editYear}
                   onChange={(e) => setEditYear(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white focus:border-blue-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800/80 border border-slate-700/50 text-white focus:border-cyan-400/50 focus:outline-none"
                 >
                   {YEAR_OPTIONS.map((y) => (
                     <option key={y} value={y}>
@@ -136,14 +136,14 @@ export function StudentProfileBadge({ studentId }: Props) {
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="flex-1 px-4 py-2 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition"
+                className="flex-1 px-4 py-2 rounded-lg bg-slate-800/80 backdrop-blur-sm border border-slate-700/50 text-gray-300 hover:bg-slate-700/80 transition"
               >
                 取消
               </button>
               <button
                 type="button"
                 onClick={save}
-                className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition"
+                className="flex-1 px-4 py-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition font-medium"
               >
                 保存
               </button>
@@ -151,6 +151,6 @@ export function StudentProfileBadge({ studentId }: Props) {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

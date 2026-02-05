@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
-import { getWrongQuestions, saveWrongQuestions, getWrongBooks } from '@/lib/wrong-book-cookie';
+import { getWrongQuestions, saveWrongQuestion, deleteWrongQuestion, getWrongBooks } from '@/lib/wrong-book-db';
 
 // 更新错题（重命名、修改内容、移动错题本）
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await getAuthUser();
@@ -13,16 +13,15 @@ export async function PATCH(
       return NextResponse.json({ error: '未授权' }, { status: 401 });
     }
 
+    const { id } = await params;
     const { name, content, wrongBookId } = await request.json();
 
-    const questions = await getWrongQuestions();
-    const questionIndex = questions.findIndex(q => q.id === params.id);
+    const questions = await getWrongQuestions(user.id);
+    const question = questions.find(q => q.id === id);
 
-    if (questionIndex === -1) {
+    if (!question) {
       return NextResponse.json({ error: '错题不存在' }, { status: 404 });
     }
-
-    const question = questions[questionIndex];
 
     // 如果修改了名称，检查名称是否为空和是否重复
     if (name !== undefined) {
@@ -33,8 +32,9 @@ export async function PATCH(
       // 检查名称是否重复（排除当前错题，在同一错题本内检查）
       const targetBookId = wrongBookId !== undefined ? (wrongBookId || null) : question.wrongBookId;
       const duplicateQuestion = questions.find(
-        q => q.id !== params.id 
+        q => q.id !== id 
           && q.wrongBookId === targetBookId 
+          && q.subject === question.subject
           && q.name === name.trim()
       );
       if (duplicateQuestion) {
@@ -42,47 +42,50 @@ export async function PATCH(
       }
     }
 
-    // 如果修改了 wrongBookId，验证新错题本是否存在
+    // 如果修改了 wrongBookId，验证新错题本是否存在且属于同一学科
     if (wrongBookId !== undefined && wrongBookId !== question.wrongBookId) {
       if (wrongBookId) {
-        const books = await getWrongBooks();
+        const books = await getWrongBooks(user.id);
         const book = books.find(b => b.id === wrongBookId);
         if (!book) {
           return NextResponse.json({ error: '错题本不存在' }, { status: 404 });
         }
+        if (question.subject && book.subject !== question.subject) {
+          return NextResponse.json({ error: '错题本学科不匹配' }, { status: 400 });
+        }
       }
     }
 
-    // 更新字段
-    if (name !== undefined) questions[questionIndex].name = name.trim();
-    if (content !== undefined) questions[questionIndex].content = content.trim();
-    
-    if (wrongBookId !== undefined) {
-      const oldBookId = questions[questionIndex].wrongBookId;
-      questions[questionIndex].wrongBookId = wrongBookId || null;
-      
-      // 如果移动了错题本，需要重新计算 sortOrder
-      if (wrongBookId !== oldBookId) {
-        const targetQuestions = questions.filter(
-          q => q.wrongBookId === (wrongBookId || null) && q.id !== params.id
-        );
-        const maxOrder = targetQuestions.length > 0
-          ? Math.max(...targetQuestions.map(q => q.sortOrder))
-          : -1;
-        questions[questionIndex].sortOrder = maxOrder + 1;
-      }
+    // 计算新的 sortOrder（如果移动了错题本）
+    let newSortOrder = question.sortOrder;
+    if (wrongBookId !== undefined && wrongBookId !== question.wrongBookId) {
+      const targetQuestions = questions.filter(
+        q => q.wrongBookId === (wrongBookId || null) 
+          && q.subject === question.subject
+          && q.id !== id
+      );
+      const maxOrder = targetQuestions.length > 0
+        ? Math.max(...targetQuestions.map(q => q.sortOrder))
+        : -1;
+      newSortOrder = maxOrder + 1;
     }
 
-    questions[questionIndex].updatedAt = new Date().toISOString();
-    await saveWrongQuestions(questions);
+    const updatedQuestion = await saveWrongQuestion(user.id, {
+      ...question,
+      name: name !== undefined ? name.trim() : question.name,
+      content: content !== undefined ? content.trim() : question.content,
+      wrongBookId: wrongBookId !== undefined ? (wrongBookId || null) : question.wrongBookId,
+      sortOrder: newSortOrder,
+      updatedAt: new Date().toISOString(),
+    });
 
     return NextResponse.json({
-      id: questions[questionIndex].id,
-      name: questions[questionIndex].name,
-      content: questions[questionIndex].content,
-      wrongBookId: questions[questionIndex].wrongBookId,
-      sortOrder: questions[questionIndex].sortOrder,
-      updatedAt: questions[questionIndex].updatedAt,
+      id: updatedQuestion.id,
+      name: updatedQuestion.name,
+      content: updatedQuestion.content,
+      wrongBookId: updatedQuestion.wrongBookId,
+      sortOrder: updatedQuestion.sortOrder,
+      updatedAt: updatedQuestion.updatedAt,
     });
   } catch (error) {
     console.error('Update wrong question error:', error);
@@ -93,7 +96,7 @@ export async function PATCH(
 // 删除错题
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await getAuthUser();
@@ -101,15 +104,17 @@ export async function DELETE(
       return NextResponse.json({ error: '未授权' }, { status: 401 });
     }
 
-    const questions = await getWrongQuestions();
-    const questionIndex = questions.findIndex(q => q.id === params.id);
+    const { id } = await params;
+    
+    // 验证错题是否存在且属于当前学生
+    const questions = await getWrongQuestions(user.id);
+    const question = questions.find(q => q.id === id);
 
-    if (questionIndex === -1) {
+    if (!question) {
       return NextResponse.json({ error: '错题不存在' }, { status: 404 });
     }
 
-    questions.splice(questionIndex, 1);
-    await saveWrongQuestions(questions);
+    await deleteWrongQuestion(user.id, id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

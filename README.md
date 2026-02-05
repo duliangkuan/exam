@@ -49,35 +49,48 @@ npm run dev
 
 ## 部署到Vercel
 
-1. 将代码推送到GitHub仓库
+### 快速部署步骤
 
-2. 在Vercel中导入项目
-
-3. 配置环境变量：
-   - `DATABASE_URL`: Vercel Postgres连接字符串
-   - `JWT_SECRET`: 随机生成的密钥
-   - `DEEPSEEK_API_KEY`: Deepseek API密钥
-
-4. **重要：部署后必须运行数据库迁移**
-   
-   如果遇到"保存报告失败"等数据库错误，说明数据库结构未同步。解决方法：
-   
-   **方法1：通过Vercel CLI（推荐）**
+1. **将代码推送到GitHub仓库**
    ```bash
-   # 拉取环境变量
-   vercel env pull .env.local
-   
-   # 运行数据库迁移
-   npx prisma db push
+   git add .
+   git commit -m "准备部署到Vercel"
+   git push origin main
    ```
+
+2. **在Vercel中导入项目**
+   - 访问 [Vercel Dashboard](https://vercel.com/dashboard)
+   - 点击 "Add New" → "Project"
+   - 导入 GitHub 仓库
+
+3. **配置环境变量**（在 Vercel Dashboard → Settings → Environment Variables）
    
-   **方法2：通过Vercel Dashboard**
-   - 进入项目设置 → 数据库
-   - 在数据库控制台运行：`npx prisma db push`
+   **必需的环境变量**（必须添加到 Production、Preview、Development 三个环境）：
+   - `DATABASE_URL`: Vercel Postgres 连接字符串（推荐使用 Prisma Accelerate）
+   - `JWT_SECRET`: 随机生成的密钥（生产环境必须使用强密码）
+   - `DEEPSEEK_API_KEY`: Deepseek API 密钥
+   - `TEXTIN_APP_ID`: Textin OCR App ID
+   - `TEXTIN_SECRET_CODE`: Textin OCR Secret Code
    
-   **方法3：自动迁移（已配置）**
-   - 已更新 `vercel.json`，构建时会自动运行数据库迁移
-   - 如果自动迁移失败，请使用方法1或方法2手动运行
+   **可选的环境变量**：
+   - `NEXT_PUBLIC_CENTER_LOGO_IMAGE`: 学生端仪表盘 Logo 路径（如：`/images/logo.png`）
+
+4. **部署**
+   - 使用部署脚本：`.\deploy-vercel.ps1`
+   - 或手动部署：`vercel --prod`
+
+5. **数据库迁移**（已自动配置）
+   - `vercel.json` 中已配置自动迁移：`prisma db push --accept-data-loss`
+   - 首次部署后会自动运行数据库迁移
+   - 如果自动迁移失败，可以手动运行：
+     ```bash
+     vercel env pull .env.local
+     npx prisma db push
+     ```
+
+### 详细部署指南
+
+查看 `DEPLOYMENT_READY.md` 获取完整的部署检查清单和故障排除指南。
 
 ## 默认管理员密码
 

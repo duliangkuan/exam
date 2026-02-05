@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { getAuthUser } from '@/lib/auth';
-import { getWrongQuestions } from '@/lib/wrong-book-cookie';
+import { getWrongQuestions } from '@/lib/wrong-book-db';
 import WrongQuestionDetailPage from '@/components/student/WrongQuestionDetailPage';
 
 async function WrongQuestionDetailContent({
@@ -15,7 +15,7 @@ async function WrongQuestionDetailContent({
     redirect('/');
   }
 
-  const questions = await getWrongQuestions();
+  const questions = await getWrongQuestions(user.id);
   const question = questions.find(q => q.id === questionId);
 
   if (!question) {
@@ -28,6 +28,7 @@ async function WrongQuestionDetailContent({
       questionName={question.name}
       questionContent={question.content}
       wrongBookId={question.wrongBookId}
+      subject={question.subject}
     />
   );
 }
@@ -35,11 +36,12 @@ async function WrongQuestionDetailContent({
 export default async function WrongQuestionDetailPageWrapper({
   params,
 }: {
-  params: { questionId: string };
+  params: Promise<{ questionId: string }>;
 }) {
+  const { questionId } = await params;
   return (
     <Suspense fallback={<div className="min-h-screen p-8 flex items-center justify-center"><div className="text-gray-400">加载中...</div></div>}>
-      <WrongQuestionDetailContent questionId={params.questionId} />
+      <WrongQuestionDetailContent questionId={questionId} />
     </Suspense>
   );
 }

@@ -87,15 +87,19 @@ model WrongBook {
   id        String   @id @default(uuid())
   studentId String   @map("student_id")
   name      String   // 错题本名称
+  subject   String?  // 学科：'chinese' | 'english' | 'math' | 'computer' | null
+  parentId  String?  @map("parent_id") // 父错题本ID，null表示在学科根目录下
   sortOrder Int      @default(0) @map("sort_order") // 排序序号
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   student   Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
   questions WrongQuestion[]
+  parent    WrongBook?     @relation("WrongBookHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  WrongBook[]     @relation("WrongBookHierarchy")
 
   @@map("wrong_books")
-  @@index([studentId, sortOrder])
+  @@index([studentId, subject, parentId, sortOrder])
 }
 
 model WrongQuestion {
@@ -104,6 +108,7 @@ model WrongQuestion {
   wrongBookId String?   @map("wrong_book_id") // null 表示未归类
   name        String    // 错题名称（知识点）
   content     String    // 题目完整文本
+  subject     String?   // 学科：'chinese' | 'english' | 'math' | 'computer' | null
   sortOrder   Int       @default(0) @map("sort_order") // 错题本内排序
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
@@ -112,5 +117,5 @@ model WrongQuestion {
   wrongBook WrongBook? @relation(fields: [wrongBookId], references: [id], onDelete: SetNull)
 
   @@map("wrong_questions")
-  @@index([studentId, wrongBookId, sortOrder])
+  @@index([studentId, subject, wrongBookId, sortOrder])
 }
