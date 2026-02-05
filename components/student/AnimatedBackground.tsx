@@ -37,10 +37,10 @@ export default function AnimatedBackground() {
         this.canvasHeight = canvasHeight;
         this.x = Math.random() * canvasWidth;
         this.y = Math.random() * canvasHeight;
-        this.radius = Math.random() * 2 + 0.5;
-        this.speedX = (Math.random() - 0.5) * 0.5;
-        this.speedY = (Math.random() - 0.5) * 0.5;
-        this.opacity = Math.random() * 0.5 + 0.2;
+        this.radius = Math.random() * 2.5 + 1; // 稍微增大粒子
+        this.speedX = (Math.random() - 0.5) * 0.8; // 加快移动速度
+        this.speedY = (Math.random() - 0.5) * 0.8;
+        this.opacity = Math.random() * 0.6 + 0.3; // 提高可见度
         const colors = [
           'rgba(59, 130, 246, ', // blue
           'rgba(34, 197, 94, ', // green
@@ -68,7 +68,7 @@ export default function AnimatedBackground() {
 
     // 创建粒子
     const particles: Particle[] = [];
-    const particleCount = 50;
+    const particleCount = 80; // 增加粒子数量
     for (let i = 0; i < particleCount; i++) {
       particles.push(new Particle(canvas.width, canvas.height));
     }
@@ -77,23 +77,27 @@ export default function AnimatedBackground() {
     const gridSize = 100;
     let gridOffset = 0;
 
-    // 光晕效果
+    // 光晕效果 - 增强版
     const glows: Array<{
       x: number;
       y: number;
       radius: number;
       opacity: number;
       speed: number;
+      baseOpacity: number;
+      pulseSpeed: number;
     }> = [];
 
-    // 创建初始光晕
-    for (let i = 0; i < 3; i++) {
+    // 创建更多、更亮的光晕
+    for (let i = 0; i < 5; i++) {
       glows.push({
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,
-        radius: Math.random() * 200 + 100,
-        opacity: Math.random() * 0.3 + 0.1,
-        speed: Math.random() * 0.5 + 0.2,
+        radius: Math.random() * 250 + 150, // 更大的光晕
+        opacity: Math.random() * 0.5 + 0.3, // 更高的基础透明度
+        speed: Math.random() * 0.8 + 0.3,
+        baseOpacity: Math.random() * 0.5 + 0.3,
+        pulseSpeed: Math.random() * 0.003 + 0.002,
       });
     }
 
@@ -117,9 +121,9 @@ export default function AnimatedBackground() {
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // 绘制网格（更柔和的网格线）
-      gridOffset += 0.5;
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.08)';
+      // 绘制网格（增强动态效果）
+      gridOffset += 1; // 加快网格移动速度
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.12)'; // 稍微增强网格线可见度
       ctx.lineWidth = 0.5;
 
       // 垂直线
@@ -138,17 +142,24 @@ export default function AnimatedBackground() {
         ctx.stroke();
       }
 
-      // 绘制光晕
+      // 绘制光晕 - 增强版动态光效
+      const time = Date.now() * 0.001;
       glows.forEach((glow, index) => {
-        glow.x += Math.sin(Date.now() * 0.001 + index) * glow.speed;
-        glow.y += Math.cos(Date.now() * 0.001 + index) * glow.speed;
-        glow.opacity += Math.sin(Date.now() * 0.002 + index) * 0.01;
+        // 更流畅的移动轨迹
+        glow.x += Math.sin(time * 0.5 + index * 1.5) * glow.speed;
+        glow.y += Math.cos(time * 0.5 + index * 1.5) * glow.speed;
+        
+        // 增强的脉冲效果
+        const pulse = Math.sin(time * 2 + index) * 0.3 + 0.7;
+        glow.opacity = glow.baseOpacity * pulse;
 
-        if (glow.x < 0) glow.x = canvas.width;
-        if (glow.x > canvas.width) glow.x = 0;
-        if (glow.y < 0) glow.y = canvas.height;
-        if (glow.y > canvas.height) glow.y = 0;
+        // 边界处理
+        if (glow.x < -glow.radius) glow.x = canvas.width + glow.radius;
+        if (glow.x > canvas.width + glow.radius) glow.x = -glow.radius;
+        if (glow.y < -glow.radius) glow.y = canvas.height + glow.radius;
+        if (glow.y > canvas.height + glow.radius) glow.y = -glow.radius;
 
+        // 创建更亮、更明显的渐变光晕
         const glowGradient = ctx.createRadialGradient(
           glow.x,
           glow.y,
@@ -157,10 +168,12 @@ export default function AnimatedBackground() {
           glow.y,
           glow.radius
         );
-        // 柔和的蓝色和青色光晕
-        glowGradient.addColorStop(0, `rgba(96, 165, 250, ${glow.opacity * 0.6})`);
-        glowGradient.addColorStop(0.3, `rgba(34, 211, 238, ${glow.opacity * 0.4})`);
-        glowGradient.addColorStop(0.6, `rgba(34, 197, 94, ${glow.opacity * 0.2})`);
+        // 增强光晕亮度和色彩
+        glowGradient.addColorStop(0, `rgba(96, 165, 250, ${glow.opacity * 0.8})`);
+        glowGradient.addColorStop(0.2, `rgba(59, 130, 246, ${glow.opacity * 0.6})`);
+        glowGradient.addColorStop(0.4, `rgba(34, 211, 238, ${glow.opacity * 0.5})`);
+        glowGradient.addColorStop(0.6, `rgba(34, 197, 94, ${glow.opacity * 0.3})`);
+        glowGradient.addColorStop(0.8, `rgba(147, 51, 234, ${glow.opacity * 0.15})`);
         glowGradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
 
         ctx.fillStyle = glowGradient;
@@ -178,21 +191,40 @@ export default function AnimatedBackground() {
         particle.draw();
       });
 
-      // 连接附近的粒子（更柔和的连接线）
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.08)';
-      ctx.lineWidth = 0.5;
+      // 连接附近的粒子（增强连接线效果）
       for (let i = 0; i < particles.length; i++) {
         for (let j = i + 1; j < particles.length; j++) {
           const dx = particles[i].x - particles[j].x;
           const dy = particles[i].y - particles[j].y;
           const distance = Math.sqrt(dx * dx + dy * dy);
 
-          if (distance < 150) {
+          if (distance < 180) {
+            // 根据距离动态调整线条透明度和颜色
+            const opacity = 0.3 * (1 - distance / 180);
+            const hue = 200 + (distance / 180) * 60; // 从蓝色到青色渐变
+            
             ctx.beginPath();
             ctx.moveTo(particles[i].x, particles[i].y);
             ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.strokeStyle = `rgba(59, 130, 246, ${0.2 * (1 - distance / 150)})`;
+            
+            // 使用更亮的颜色
+            ctx.strokeStyle = `rgba(59, 130, 246, ${opacity})`;
+            ctx.lineWidth = 0.8;
             ctx.stroke();
+            
+            // 在连接点添加小光点
+            if (distance < 100) {
+              ctx.beginPath();
+              ctx.arc(
+                (particles[i].x + particles[j].x) / 2,
+                (particles[i].y + particles[j].y) / 2,
+                1,
+                0,
+                Math.PI * 2
+              );
+              ctx.fillStyle = `rgba(96, 165, 250, ${opacity * 0.5})`;
+              ctx.fill();
+            }
           }
         }
       }

@@ -1,12 +1,12 @@
 import { redirect } from 'next/navigation';
-import Image from 'next/image';
 import { getAuthUser } from '@/lib/auth';
 import Link from 'next/link';
 import { StudentProfileBadge } from '@/components/student/StudentProfileBadge';
 import AnimatedBackground from '@/components/student/AnimatedBackground';
+import LogoImage from '@/components/student/LogoImage';
 
-/** 中央 Logo：.env 中 NEXT_PUBLIC_CENTER_LOGO_IMAGE 指向 /images/logo.png（将 logo.png 放到 public/images/），未设置时显示默认熊猫 */
-const CENTER_LOGO_IMAGE = process.env.NEXT_PUBLIC_CENTER_LOGO_IMAGE || '';
+/** 中央 Logo：优先使用环境变量 NEXT_PUBLIC_CENTER_LOGO_IMAGE，否则默认使用 /images/logo.png，都不存在时显示默认熊猫 */
+const CENTER_LOGO_IMAGE = process.env.NEXT_PUBLIC_CENTER_LOGO_IMAGE || '/images/logo.png';
 
 export default async function StudentDashboard() {
   const user = await getAuthUser();
@@ -21,8 +21,8 @@ export default async function StudentDashboard() {
       <AnimatedBackground />
       
       {/* 内容层 */}
-      <div className="relative z-10 min-h-screen p-6 md:p-8">
-        <div className="max-w-7xl mx-auto">
+      <div className="relative z-10 min-h-screen p-6 md:p-8 pb-20 flex flex-col overflow-y-auto">
+        <div className="max-w-7xl mx-auto w-full flex-1">
           {/* 顶部Header */}
           <div className="flex justify-between items-center mb-8 md:mb-12">
             <h1 className="text-3xl md:text-4xl font-bold text-white">
@@ -43,18 +43,7 @@ export default async function StudentDashboard() {
           <div className="text-center mb-12 md:mb-16">
             <div className="mb-6 flex justify-center">
               <div className="relative w-40 h-40 md:w-48 md:h-48 flex items-center justify-center">
-                {CENTER_LOGO_IMAGE ? (
-                  <Image
-                    src={CENTER_LOGO_IMAGE}
-                    alt=""
-                    width={192}
-                    height={192}
-                    className="object-contain w-full h-full drop-shadow-2xl"
-                    unoptimized={CENTER_LOGO_IMAGE.startsWith('/')}
-                  />
-                ) : (
-                  <span className="text-8xl md:text-9xl drop-shadow-2xl">🐼</span>
-                )}
+                <LogoImage src={CENTER_LOGO_IMAGE} />
               </div>
             </div>
             <h2 className="text-4xl md:text-5xl font-bold text-blue-400 mb-3 drop-shadow-lg">
@@ -66,7 +55,7 @@ export default async function StudentDashboard() {
           </div>
 
           {/* 功能模块卡片：2x2网格布局 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto mb-8">
             {/* AI通关测 */}
             <Link
               href="/student/exam"
