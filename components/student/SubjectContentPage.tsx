@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import CreateQuestionModal from './CreateQuestionModal';
 import FloatingChatButton from './FloatingChatButton';
+import ViewQuestionModal from './ViewQuestionModal';
 import { SubjectKey, SUBJECT_MAP, getNestingLevel } from '@/lib/wrong-book-types';
 
 interface WrongBook {
@@ -52,6 +53,8 @@ export default function SubjectContentPage({ subject, studentId, parentBookId = 
   const [editingBookName, setEditingBookName] = useState<string>('');
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [editingQuestionName, setEditingQuestionName] = useState<string>('');
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedQuestion, setSelectedQuestion] = useState<WrongQuestion | null>(null);
 
   // 加载数据
   const loadData = async () => {
@@ -262,9 +265,13 @@ export default function SubjectContentPage({ subject, studentId, parentBookId = 
     router.push(`/student/notebook/${subject}/${bookId}`);
   };
 
-  // 点击错题查看详情
+  // 点击错题查看详情（打开模态框）
   const handleQuestionClick = (questionId: string) => {
-    router.push(`/student/notebook/question/${questionId}`);
+    const question = questions.find(q => q.id === questionId);
+    if (question) {
+      setSelectedQuestion(question);
+      setShowViewModal(true);
+    }
   };
 
   // 面包屑导航
@@ -512,6 +519,20 @@ export default function SubjectContentPage({ subject, studentId, parentBookId = 
             onSuccess={() => {
               setShowCreateModal(false);
               loadData();
+            }}
+          />
+        )}
+
+        {/* 查看错题模态框 */}
+        {showViewModal && selectedQuestion && (
+          <ViewQuestionModal
+            questionId={selectedQuestion.id}
+            questionName={selectedQuestion.name}
+            questionContent={selectedQuestion.content}
+            isOpen={showViewModal}
+            onClose={() => {
+              setShowViewModal(false);
+              setSelectedQuestion(null);
             }}
           />
         )}
