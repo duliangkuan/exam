@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import ReactCrop, { Crop, PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
@@ -17,56 +17,89 @@ function preprocessLaTeX(text: string): string {
   // 如果已经包含 $ 符号，直接返回
   if (text.includes('$')) return text;
   
-  // 检测 LaTeX 命令模式
-  const latexCommandPattern = /\\(?:lim|frac|sqrt|sum|int|prod|alpha|beta|gamma|delta|Delta|pi|theta|sin|cos|tan|log|ln|exp|rightarrow|leftarrow|geq|leq|neq|approx|equiv|in|notin|subset|supset|cup|cap|emptyset|infty|partial|nabla|cdot|times|div|pm|mp|ldots|cdots|vdots|ddots|vec|hat|bar|tilde|dot|ddot|prime|backslash|text|mathrm|mathbf|mathit)\b|_|\^|\\[{}]/;
+  // 检测常见的 LaTeX 命令
+  const latexCommandPattern = /\\(?:lim|frac|sqrt|sum|int|prod|alpha|beta|gamma|delta|Delta|pi|theta|sin|cos|tan|log|ln|exp|rightarrow|leftarrow|geq|leq|neq|approx|equiv|prime|cdot|times|div|pm|mp|ldots|cdots|vdots|ddots|vec|hat|bar|tilde|dot|ddot|text|mathrm|mathbf|mathit|partial|nabla|infty|emptyset|in|notin|subset|supset|cup|cap)\b/;
   
-  // 检测是否包含 LaTeX 语法
-  if (!latexCommandPattern.test(text)) {
-    return text;
+  // 检测是否包含 LaTeX 命令
+  if (!latexCommandPattern.test(text) && !/[_{}\\]/.test(text)) {
+    return text; // 没有数学内容，直接返回
   }
   
-  // 按段落处理（空行分隔）
-  const paragraphs = text.split(/\n\s*\n/);
-  const processedParagraphs = paragraphs.map(paragraph => {
-    const lines = paragraph.split('\n').map(l => l.trim()).filter(l => l);
+  // 按行处理，识别并包裹数学表达式
+  const lines = text.split('\n');
+  const processedLines: string[] = [];
+  let mathBlock: string[] = [];
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
     
-    // 检测整个段落是否主要是数学公式
-    const allText = lines.join(' ');
-    const latexMatches = allText.match(/\\[a-zA-Z]+\b|_|\^|\\[{}]/g) || [];
-    const latexDensity = latexMatches.length / allText.length;
-    
-    // 如果 LaTeX 密度 > 15%，认为是数学公式
-    if (latexDensity > 0.15) {
-      // 检查是否包含数学表达式结构
-      const hasMathStructure = /\\[a-zA-Z]+\s*\{|_\s*\{|\^\s*\{|\\frac|\\lim|\\sqrt|\\sum|\\int|\\prod/.test(allText);
-      
-      if (hasMathStructure) {
-        // 对于多行或长表达式，使用块级公式
-        if (lines.length > 1 || allText.length > 50) {
-          return `$$${allText}$$`;
-        } else {
-          return `$${allText}$`;
+    if (!trimmed) {
+      // 空行：处理之前的数学块
+      if (mathBlock.length > 0) {
+        const mathText = mathBlock.join(' ').trim();
+        if (mathText) {
+          processedLines.push(`$$${mathText}$$`);
         }
+        mathBlock = [];
       }
+      processedLines.push('');
+      continue;
     }
     
-    // 否则按行处理
-    return lines.map(line => {
-      const latexMatches = line.match(/\\[a-zA-Z]+\b|_|\^|\\[{}]/g) || [];
-      const density = latexMatches.length / line.length;
-      
-      if (density > 0.2 && !line.startsWith('$')) {
-        const hasMathStructure = /\\[a-zA-Z]+\s*\{|_\s*\{|\^\s*\{|\\frac|\\lim|\\sqrt|\\sum|\\int/.test(line);
-        if (hasMathStructure) {
-          return line.length > 50 ? `$$${line}$$` : `$${line}$`;
+    // 检测是否包含 LaTeX 命令
+    const hasLatex = latexCommandPattern.test(trimmed);
+    const latexCount = (trimmed.match(/\\[a-zA-Z]+\b/g) || []).length;
+    const hasSubSup = /[_{}]/.test(trimmed);
+    const mathSymbolCount = (trimmed.match(/\\[a-zA-Z]+\b|_[{}]|\^{}/g) || []).length;
+    const mathDensity = mathSymbolCount / Math.max(trimmed.length, 1);
+    
+    // 判断是否为数学表达式行
+    // 条件：包含 LaTeX 命令，或者有下标/上标且数学符号数量 > 2
+    const isMathLine = hasLatex || (hasSubSup && mathSymbolCount > 2);
+    
+    // 判断是否为纯文本行（主要是中文，几乎没有数学符号）
+    const chineseCount = (trimmed.match(/[\u4e00-\u9fa5]/g) || []).length;
+    const chineseRatio = chineseCount / Math.max(trimmed.length, 1);
+    const isPureText = chineseRatio > 0.7 && mathSymbolCount < 2;
+    
+    if (isMathLine && !isPureText) {
+      // 数学表达式行，加入数学块
+      mathBlock.push(trimmed);
+    } else {
+      // 文本行：先处理之前的数学块
+      if (mathBlock.length > 0) {
+        const mathText = mathBlock.join(' ').trim();
+        if (mathText) {
+          processedLines.push(`$$${mathText}$$`);
         }
+        mathBlock = [];
       }
       
-      return line;
-    }).join('\n');
-  });
+      // 如果这行包含数学符号，尝试识别内联公式
+      if (hasSubSup && !isPureText && mathSymbolCount > 1) {
+        processedLines.push(`$${trimmed}$`);
+      } else {
+        processedLines.push(trimmed);
+      }
+    }
+  }
   
-  return processedParagraphs.join('\n\n');
+  // 处理最后的数学块
+  if (mathBlock.length > 0) {
+    const mathText = mathBlock.join(' ').trim();
+    if (mathText) {
+      processedLines.push(`$$${mathText}$$`);
+    }
+  }
+  
+  const result = processedLines.join('\n');
+  
+  // 如果处理后仍然没有 $ 符号，但包含 LaTeX 命令，强制添加
+  if (!result.includes('$') && latexCommandPattern.test(result)) {
+    return `$$${result.trim()}$$`;
+  }
+  
+  return result;
 }
 
 interface CreateQuestionModalProps {
@@ -95,6 +128,9 @@ export default function CreateQuestionModal({
   const [questionName, setQuestionName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const editableRef = useRef<HTMLDivElement>(null);
+  const hiddenTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isComposing, setIsComposing] = useState(false);
   
   // 图片裁剪相关状态
   const [crop, setCrop] = useState<Crop>();
@@ -294,6 +330,28 @@ export default function CreateQuestionModal({
     }
   };
 
+  // 同步 textarea 和显示区域的高度和滚动位置
+  useEffect(() => {
+    if (hiddenTextareaRef.current && editableRef.current) {
+      // 同步高度
+      const height = Math.max(300, hiddenTextareaRef.current.scrollHeight);
+      hiddenTextareaRef.current.style.height = `${height}px`;
+      editableRef.current.style.minHeight = `${height}px`;
+      
+      // 同步滚动位置
+      const syncScroll = () => {
+        if (hiddenTextareaRef.current && editableRef.current) {
+          editableRef.current.scrollTop = hiddenTextareaRef.current.scrollTop;
+        }
+      };
+      
+      hiddenTextareaRef.current.addEventListener('scroll', syncScroll);
+      return () => {
+        hiddenTextareaRef.current?.removeEventListener('scroll', syncScroll);
+      };
+    }
+  }, [ocrText]);
+
   const handleReset = () => {
     setMode('select');
     setImageFile(null);
@@ -446,33 +504,50 @@ export default function CreateQuestionModal({
             </div>
             <div>
               <label className="block text-sm font-bold mb-2">识别结果（可编辑）：</label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 编辑区域 */}
-                <div>
-                  <div className="text-xs text-gray-400 mb-1">原始文本（可编辑）</div>
-                  <textarea
-                    value={ocrText}
-                    onChange={(e) => setOcrText(e.target.value)}
-                    rows={12}
-                    className="w-full px-4 py-2 bg-gray-700 rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none font-mono text-sm"
-                    placeholder="识别结果将显示在这里..."
-                  />
-                </div>
-                {/* 预览区域 */}
-                <div>
-                  <div className="text-xs text-gray-400 mb-1">预览效果</div>
-                  <div className="w-full px-4 py-2 bg-gray-900 rounded-lg border border-gray-600 min-h-[200px] max-h-[300px] overflow-y-auto">
-                    {ocrText ? (
-                      <div className="text-white whitespace-pre-wrap break-words [&_.katex]:text-white [&_.katex-display]:my-4">
-                        {renderMath(preprocessLaTeX(ocrText)).map((part, index) => (
+              <div className="relative bg-gray-700 rounded-lg border border-gray-600 hover:border-blue-500 focus-within:border-blue-400 min-h-[300px] max-h-[400px] overflow-hidden">
+                {/* 显示区域，始终显示渲染后的数学公式 */}
+                <div
+                  ref={editableRef}
+                  className="w-full px-4 py-2 min-h-[300px] max-h-[400px] overflow-y-auto text-white [&_.katex]:text-white [&_.katex-display]:my-4 [&_.katex-display]:text-white [&_.katex-display]:text-center [&_.katex-display]:overflow-x-auto"
+                  style={{ 
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word'
+                  }}
+                >
+                  {ocrText ? (
+                    <div>
+                      {(() => {
+                        const processed = preprocessLaTeX(ocrText);
+                        let finalText = processed;
+                        if (!processed.includes('$') && /\\[a-zA-Z]+\b|_[{}]|\^{}/.test(processed)) {
+                          finalText = `$$${processed.trim()}$$`;
+                        }
+                        const rendered = renderMath(finalText);
+                        return rendered.map((part, index) => (
                           <React.Fragment key={index}>{part}</React.Fragment>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-gray-500 text-sm">预览将显示在这里...</div>
-                    )}
-                  </div>
+                        ));
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="text-gray-500 text-sm">输入 LaTeX 代码，将自动渲染为数学公式...</div>
+                  )}
                 </div>
+                {/* 透明的 textarea 用于实际编辑，覆盖在显示区域上 */}
+                <textarea
+                  ref={hiddenTextareaRef}
+                  value={ocrText}
+                  onChange={(e) => setOcrText(e.target.value)}
+                  onCompositionStart={() => setIsComposing(true)}
+                  onCompositionEnd={() => setIsComposing(false)}
+                  className="absolute inset-0 w-full h-full px-4 py-2 bg-transparent text-transparent caret-white resize-none border-0 outline-none font-mono text-sm z-10 [&::-webkit-scrollbar]:hidden [-ms-overflow-style]:none [scrollbar-width]:none"
+                  style={{ 
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    overflow: 'auto'
+                  }}
+                  placeholder=""
+                  rows={15}
+                />
               </div>
             </div>
             {error && <p className="text-red-400 text-sm">{error}</p>}
