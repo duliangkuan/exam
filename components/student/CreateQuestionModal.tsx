@@ -1,9 +1,103 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import ReactCrop, { Crop, PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
+import { renderMath } from '@/lib/math-render';
+
+/**
+ * 预处理 OCR 文本，将纯 LaTeX 代码转换为可渲染格式
+ * 检测包含 LaTeX 命令的文本块，自动添加 $ 包裹
+ */
+function preprocessLaTeX(text: string): string {
+  if (!text || typeof text !== 'string') return text;
+  
+  // 如果已经包含 $ 符号，直接返回
+  if (text.includes('$')) return text;
+  
+  // 检测常见的 LaTeX 命令
+  const latexCommandPattern = /\\(?:lim|frac|sqrt|sum|int|prod|alpha|beta|gamma|delta|Delta|pi|theta|sin|cos|tan|log|ln|exp|rightarrow|leftarrow|geq|leq|neq|approx|equiv|prime|cdot|times|div|pm|mp|ldots|cdots|vdots|ddots|vec|hat|bar|tilde|dot|ddot|text|mathrm|mathbf|mathit|partial|nabla|infty|emptyset|in|notin|subset|supset|cup|cap)\b/;
+  
+  // 检测是否包含 LaTeX 命令
+  if (!latexCommandPattern.test(text) && !/[_{}\\]/.test(text)) {
+    return text; // 没有数学内容，直接返回
+  }
+  
+  // 按行处理，识别并包裹数学表达式
+  const lines = text.split('\n');
+  const processedLines: string[] = [];
+  let mathBlock: string[] = [];
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    
+    if (!trimmed) {
+      // 空行：处理之前的数学块
+      if (mathBlock.length > 0) {
+        const mathText = mathBlock.join(' ').trim();
+        if (mathText) {
+          processedLines.push(`$$${mathText}$$`);
+        }
+        mathBlock = [];
+      }
+      processedLines.push('');
+      continue;
+    }
+    
+    // 检测是否包含 LaTeX 命令
+    const hasLatex = latexCommandPattern.test(trimmed);
+    const hasSubSup = /[_{}]/.test(trimmed);
+    const mathSymbolCount = (trimmed.match(/\\[a-zA-Z]+\b|_[{}]|\^{}/g) || []).length;
+    
+    // 判断是否为数学表达式行
+    const isMathLine = hasLatex || (hasSubSup && mathSymbolCount > 2);
+    
+    // 判断是否为纯文本行（主要是中文，几乎没有数学符号）
+    const chineseCount = (trimmed.match(/[\u4e00-\u9fa5]/g) || []).length;
+    const chineseRatio = chineseCount / Math.max(trimmed.length, 1);
+    const isPureText = chineseRatio > 0.7 && mathSymbolCount < 2;
+    
+    if (isMathLine && !isPureText) {
+      // 数学表达式行，加入数学块
+      mathBlock.push(trimmed);
+    } else {
+      // 文本行：先处理之前的数学块
+      if (mathBlock.length > 0) {
+        const mathText = mathBlock.join(' ').trim();
+        if (mathText) {
+          processedLines.push(`$$${mathText}$$`);
+        }
+        mathBlock = [];
+      }
+      
+      // 如果这行包含数学符号，尝试识别内联公式
+      if (hasSubSup && !isPureText && mathSymbolCount > 1) {
+        processedLines.push(`$${trimmed}$`);
+      } else {
+        processedLines.push(trimmed);
+      }
+    }
+  }
+  
+  // 处理最后的数学块
+  if (mathBlock.length > 0) {
+    const mathText = mathBlock.join(' ').trim();
+    if (mathText) {
+      processedLines.push(`$$${mathText}$$`);
+    }
+  }
+  
+  const result = processedLines.join('\n');
+  
+  // 如果处理后仍然没有 $ 符号，但包含 LaTeX 命令，强制添加
+  if (!result.includes('$') && latexCommandPattern.test(result)) {
+    return `$$${result.trim()}$$`;
+  }
+  
+  return result;
+}
 
 interface CreateQuestionModalProps {
   isOpen: boolean;
@@ -31,6 +125,7 @@ export default function CreateQuestionModal({
   const [questionName, setQuestionName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isMathRenderEnabled, setIsMathRenderEnabled] = useState(false);
   
   // 图片裁剪相关状态
   const [crop, setCrop] = useState<Crop>();
@@ -159,6 +254,7 @@ export default function CreateQuestionModal({
       if (res.ok) {
         const data = await res.json();
         setOcrText(data.text);
+        setIsMathRenderEnabled(false);
         setMode('ocr-result');
       } else {
         // 检查响应类型，避免解析非 JSON 响应
@@ -241,6 +337,7 @@ export default function CreateQuestionModal({
     setManualText('');
     setQuestionName('');
     setError('');
+    setIsMathRenderEnabled(false);
   };
 
   if (!isOpen) return null;
@@ -381,13 +478,47 @@ export default function CreateQuestionModal({
               />
             </div>
             <div>
-              <label className="block text-sm font-bold mb-2">识别结果（可编辑）：</label>
-              <textarea
-                value={ocrText}
-                onChange={(e) => setOcrText(e.target.value)}
-                rows={10}
-                className="w-full px-4 py-2 bg-gray-700 rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none"
-              />
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-bold">识别结果（可编辑）：</label>
+                <button
+                  onClick={() => setIsMathRenderEnabled(!isMathRenderEnabled)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    isMathRenderEnabled
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-gray-600 hover:bg-gray-700 text-gray-300'
+                  }`}
+                >
+                  {isMathRenderEnabled ? '✓ 数学公式渲染' : '数学公式渲染'}
+                </button>
+              </div>
+              {isMathRenderEnabled ? (
+                <div className="bg-gray-700 rounded-lg border border-gray-600 p-4 min-h-[200px] max-h-[400px] overflow-y-auto">
+                  {ocrText ? (
+                    <div className="text-white whitespace-pre-wrap break-words [&_.katex]:text-white [&_.katex-display]:my-4 [&_.katex-display]:text-white [&_.katex-display]:text-center [&_.katex-display]:overflow-x-auto">
+                      {(() => {
+                        const processed = preprocessLaTeX(ocrText);
+                        let finalText = processed;
+                        if (!processed.includes('$') && /\\[a-zA-Z]+\b|_[{}]|\^{}/.test(processed)) {
+                          finalText = `$$${processed.trim()}$$`;
+                        }
+                        const rendered = renderMath(finalText);
+                        return rendered.map((part, index) => (
+                          <React.Fragment key={index}>{part}</React.Fragment>
+                        ));
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="text-gray-500 text-sm">输入 LaTeX 代码，将自动渲染为数学公式...</div>
+                  )}
+                </div>
+              ) : (
+                <textarea
+                  value={ocrText}
+                  onChange={(e) => setOcrText(e.target.value)}
+                  rows={10}
+                  className="w-full px-4 py-2 bg-gray-700 rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none"
+                />
+              )}
             </div>
             {error && <p className="text-red-400 text-sm">{error}</p>}
             <div className="flex gap-2">
