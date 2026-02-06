@@ -1,9 +1,73 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import ReactCrop, { Crop, PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
+import { renderMath } from '@/lib/math-render';
+
+/**
+ * 预处理 OCR 文本，将纯 LaTeX 代码转换为可渲染格式
+ * 检测包含 LaTeX 命令的文本块，自动添加 $ 包裹
+ */
+function preprocessLaTeX(text: string): string {
+  if (!text || typeof text !== 'string') return text;
+  
+  // 如果已经包含 $ 符号，直接返回
+  if (text.includes('$')) return text;
+  
+  // 检测 LaTeX 命令模式
+  const latexCommandPattern = /\\(?:lim|frac|sqrt|sum|int|prod|alpha|beta|gamma|delta|Delta|pi|theta|sin|cos|tan|log|ln|exp|rightarrow|leftarrow|geq|leq|neq|approx|equiv|in|notin|subset|supset|cup|cap|emptyset|infty|partial|nabla|cdot|times|div|pm|mp|ldots|cdots|vdots|ddots|vec|hat|bar|tilde|dot|ddot|prime|backslash|text|mathrm|mathbf|mathit)\b|_|\^|\\[{}]/;
+  
+  // 检测是否包含 LaTeX 语法
+  if (!latexCommandPattern.test(text)) {
+    return text;
+  }
+  
+  // 按段落处理（空行分隔）
+  const paragraphs = text.split(/\n\s*\n/);
+  const processedParagraphs = paragraphs.map(paragraph => {
+    const lines = paragraph.split('\n').map(l => l.trim()).filter(l => l);
+    
+    // 检测整个段落是否主要是数学公式
+    const allText = lines.join(' ');
+    const latexMatches = allText.match(/\\[a-zA-Z]+\b|_|\^|\\[{}]/g) || [];
+    const latexDensity = latexMatches.length / allText.length;
+    
+    // 如果 LaTeX 密度 > 15%，认为是数学公式
+    if (latexDensity > 0.15) {
+      // 检查是否包含数学表达式结构
+      const hasMathStructure = /\\[a-zA-Z]+\s*\{|_\s*\{|\^\s*\{|\\frac|\\lim|\\sqrt|\\sum|\\int|\\prod/.test(allText);
+      
+      if (hasMathStructure) {
+        // 对于多行或长表达式，使用块级公式
+        if (lines.length > 1 || allText.length > 50) {
+          return `$$${allText}$$`;
+        } else {
+          return `$${allText}$`;
+        }
+      }
+    }
+    
+    // 否则按行处理
+    return lines.map(line => {
+      const latexMatches = line.match(/\\[a-zA-Z]+\b|_|\^|\\[{}]/g) || [];
+      const density = latexMatches.length / line.length;
+      
+      if (density > 0.2 && !line.startsWith('$')) {
+        const hasMathStructure = /\\[a-zA-Z]+\s*\{|_\s*\{|\^\s*\{|\\frac|\\lim|\\sqrt|\\sum|\\int/.test(line);
+        if (hasMathStructure) {
+          return line.length > 50 ? `$$${line}$$` : `$${line}$`;
+        }
+      }
+      
+      return line;
+    }).join('\n');
+  });
+  
+  return processedParagraphs.join('\n\n');
+}
 
 interface CreateQuestionModalProps {
   isOpen: boolean;
@@ -382,12 +446,34 @@ export default function CreateQuestionModal({
             </div>
             <div>
               <label className="block text-sm font-bold mb-2">识别结果（可编辑）：</label>
-              <textarea
-                value={ocrText}
-                onChange={(e) => setOcrText(e.target.value)}
-                rows={10}
-                className="w-full px-4 py-2 bg-gray-700 rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none"
-              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 编辑区域 */}
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">原始文本（可编辑）</div>
+                  <textarea
+                    value={ocrText}
+                    onChange={(e) => setOcrText(e.target.value)}
+                    rows={12}
+                    className="w-full px-4 py-2 bg-gray-700 rounded-lg border border-gray-600 focus:border-blue-500 focus:outline-none font-mono text-sm"
+                    placeholder="识别结果将显示在这里..."
+                  />
+                </div>
+                {/* 预览区域 */}
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">预览效果</div>
+                  <div className="w-full px-4 py-2 bg-gray-900 rounded-lg border border-gray-600 min-h-[200px] max-h-[300px] overflow-y-auto">
+                    {ocrText ? (
+                      <div className="text-white whitespace-pre-wrap break-words [&_.katex]:text-white [&_.katex-display]:my-4">
+                        {renderMath(preprocessLaTeX(ocrText)).map((part, index) => (
+                          <React.Fragment key={index}>{part}</React.Fragment>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-gray-500 text-sm">预览将显示在这里...</div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
             {error && <p className="text-red-400 text-sm">{error}</p>}
             <div className="flex gap-2">
